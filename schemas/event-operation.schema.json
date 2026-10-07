@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/event-operation.schema.json",
+  "title": "ExtractionResult",
+  "description": "What the extraction model is allowed to output. The model proposes operations; the deterministic validator decides what is written. The model never outputs absolute timestamps, real names or dose recommendations. Draft v1. The LLM-facing variant may need flattening to the subset of JSON Schema the provider's strict mode supports.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["language", "operations"],
+  "properties": {
+    "language": { "type": "string", "enum": ["de", "en", "other"] },
+    "operations": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/operation" }
+    }
+  },
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "baby_ref", "evidence", "confidence"],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["create", "update", "close_session", "delete", "query", "reminder", "plan_draft", "clarify", "none"],
+          "description": "plan_draft is the only way to propose a medication plan; it never activates without explicit parent confirmation."
+        },
+        "target_ref": {
+          "type": "string",
+          "pattern": "^(E[0-9]{1,2}|S[0-9]{1,2}|op:[0-9]{1,2})$",
+          "description": "Reference to a recent event (E1..), an open session (S1..), or an earlier operation in this result (op:1). Required for update, close_session, delete."
+        },
+        "baby_ref": {
+          "type": "string",
+          "pattern": "^(B[0-9]{1,2}|ALL|UNRESOLVED|NONE)$",
+          "description": "Pseudonymized baby token. UNRESOLVED when the utterance names someone not in the household or is ambiguous; NONE for household-level operations (e.g. milk stash moves)."
+        },
+        "unresolved_surface": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "The spoken form when baby_ref is UNRESOLVED."
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "sleep", "night_waking", "breastfeed", "bottle_feed", "pumping", "milk_transition",
+            "formula_prep", "diaper", "supplement", "medication_given", "temperature", "symptom",
+            "growth", "appointment", "note"
+          ]
+        },
+        "payload": { "$ref": "#/$defs/payload" },
+        "patch": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Fields to change for op=update.",
+          "properties": {
+            "start_time": { "$ref": "#/$defs/time_expression" },
+            "end_time": { "$ref": "#/$defs/time_expression" },
+            "payload": { "$ref": "#/$defs/payload" },
+            "baby_ref": { "type": "string", "pattern": "^(B[0-9]{1,2})$" }
+          }
+        },
+        "time": { "$ref": "#/$defs/time_expression" },
+        "end_time": { "$ref": "#/$defs/time_expression" },
+        "performed_by": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Who did the care if not the speaker, as a role or caregiver token (e.g. 'C2' or 'grandmother')."
+        },
+        "certainty": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amount_approx": { "type": "boolean" },
+            "time_approx": { "type": "boolean" },
+            "speaker_unsure": { "type": "boolean" }
+          }
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "For op=query: the user asked something instead of reporting. Routed to the Ask pipeline.",
+          "properties": { "question": { "type": "string", "maxLength": 500 } }
+        },
+        "reminder": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": { "type": "string", "maxLength": 200 },
+            "rrule": { "type": "string", "maxLength": 200, "description": "RFC 5545 RRULE, e.g. FREQ=DAILY;BYHOUR=8" },
+            "first_time": { "$ref": "#/$defs/time_expression" },
+            "category": { "type": "string", "enum": ["supplement", "appointment", "pumping", "supplies", "custom"] }
+          }
+        },
+        "clarify": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "question"],
+          "properties": {
+            "field": { "type": "string", "enum": ["baby", "amount", "time", "event_type", "side", "content", "other"] },
+            "question": { "type": "string", "maxLength": 120 }
+          }
+        },
+        "evidence": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Exact substring of the utterance that produced this operation."
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "quantity_ml": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": { "type": "number", "minimum": 0, "maximum": 2000 },
+        "approx": { "type": "boolean" },
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Union of typed payload fields; the validator checks which fields are allowed per event_type.",
+      "properties": {
+        "sleep_kind": { "type": "string", "enum": ["nap", "night", "auto"] },
+        "side": { "type": "string", "enum": ["left", "right", "both", "unknown"] },
+        "switch_side": { "type": "boolean" },
+        "duration_min": { "type": "number", "minimum": 0, "maximum": 1440 },
+        "content": { "type": "string", "enum": ["breast_milk", "formula", "mixed", "unspecified"] },
+        "formula_label": { "type": "string", "maxLength": 60, "description": "As spoken, e.g. 'Pre'. Matched to configured products by code." },
+        "amount_ml": { "$ref": "#/$defs/quantity_ml" },
+        "prepared_ml": { "$ref": "#/$defs/quantity_ml" },
+        "leftover_ml": { "$ref": "#/$defs/quantity_ml" },
+        "left_ml": { "$ref": "#/$defs/quantity_ml" },
+        "right_ml": { "$ref": "#/$defs/quantity_ml" },
+        "destination": { "type": "string", "enum": ["fed_now", "fridge", "freezer", "room", "discarded", "unknown"] },
+        "milk_selector": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Natural-language reference to a stash portion, e.g. 'die Milch vom Dienstag'. Resolved by code."
+        },
+        "transition_to": { "type": "string", "enum": ["fridge", "freezer", "thawing", "room", "warmed", "feeding", "discarded", "used"] },
+        "wet": { "type": "boolean" },
+        "dirty": { "type": "boolean" },
+        "stool_color_key": { "type": "string", "maxLength": 30 },
+        "stool_consistency_key": { "type": "string", "maxLength": 30 },
+        "supplement_key": { "type": "string", "maxLength": 40 },
+        "medication_name_text": { "type": "string", "maxLength": 120, "description": "Verbatim as stated by the user." },
+        "dose_text": { "type": "string", "maxLength": 80, "description": "Verbatim as stated by the user. Never inferred, normalized or suggested." },
+        "frequency_text": { "type": "string", "maxLength": 120, "description": "plan_draft only: verbatim schedule as stated (e.g. 'drei Tage lang zweimal täglich')." },
+        "celsius": { "type": "number", "minimum": 30, "maximum": 45 },
+        "measure_method": { "type": "string", "enum": ["rectal", "ear", "forehead", "axillary", "oral", "unknown"] },
+        "symptom_key": { "type": "string", "maxLength": 40 },
+        "weight_g": { "type": "number", "minimum": 300, "maximum": 30000 },
+        "length_cm": { "type": "number", "minimum": 20, "maximum": 130 },
+        "head_cm": { "type": "number", "minimum": 20, "maximum": 60 },
+        "appointment_kind": { "type": "string", "enum": ["pediatrician", "vaccination", "midwife", "lactation", "other"] },
+        "title": { "type": "string", "maxLength": 120 },
+        "text": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "time_expression": {
+      "description": "The model labels the time expression; deterministic code resolves it relative to capture_ts.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind"],
+          "properties": { "kind": { "const": "now" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "offset_min"],
+          "properties": {
+            "kind": { "const": "relative" },
+            "offset_min": { "type": "integer", "minimum": -4320, "maximum": 10080 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "hh", "mm"],
+          "properties": {
+            "kind": { "const": "clock" },
+            "hh": { "type": "integer", "minimum": 0, "maximum": 23 },
+            "mm": { "type": "integer", "minimum": 0, "maximum": 59 },
+            "ampm_ambiguous": { "type": "boolean", "description": "True for '7 Uhr' without context; resolver picks the plausible one." },
+            "day_hint": { "type": "string", "enum": ["today", "yesterday", "tomorrow", "weekday", "date"] },
+            "weekday": { "type": "integer", "minimum": 1, "maximum": 7 },
+            "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "relation", "ref"],
+          "properties": {
+            "kind": { "const": "anchor" },
+            "relation": { "type": "string", "enum": ["before", "after"] },
+            "ref": { "type": "string", "pattern": "^(E[0-9]{1,2}|S[0-9]{1,2}|op:[0-9]{1,2}|last_wake|last_sleep_start|last_feed|bedtime)$" },
+            "gap_min": { "type": "integer", "minimum": 0, "maximum": 720 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "part_of_day" },
+            "value": { "type": "string", "enum": ["early_morning", "this_morning", "midday", "afternoon", "evening", "last_night", "yesterday_evening", "tonight"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind"],
+          "properties": { "kind": { "const": "unknown" } }
+        }
+      ]
+    }
+  }
+}
