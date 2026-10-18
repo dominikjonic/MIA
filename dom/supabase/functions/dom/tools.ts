@@ -27,7 +27,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "projekt_anlegen",
-    description: "Neues Projekt anlegen. Erzeugt automatisch die 13 Standardphasen (Aufmaß bis Abnahme) mit Aufgaben, Terminen und Budgetkategorien.",
+    description: "Neues Projekt anlegen. Erzeugt automatisch die Standardphasen (oder die genannte eigene Vorlage) (Aufmaß bis Abnahme) mit Aufgaben, Terminen und Budgetkategorien.",
     input_schema: {
       type: "object",
       properties: {
@@ -41,6 +41,7 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
         arbeitsplaetze: { type: "integer" },
         flaeche_m2: { type: "number" },
         stil: { type: "string", description: "Konzept-Stichworte, z. B. hell, Eiche, Akustik, Open Space" },
+        vorlage: { type: "string", description: "Name einer eigenen Projektvorlage; leer = Standard (13 Phasen)" },
       },
       required: ["name"],
     },
@@ -206,6 +207,51 @@ export const TOOLS: Anthropic.Beta.BetaTool[] = [
       required: ["programm", "aktion"],
     },
   },
+  {
+    name: "mangel_erfassen",
+    description: "Mangel in die Mängelliste eines Projekts eintragen (z. B. bei Besichtigung/Abnahme). Optional zuständigen Handwerker, Frist und Foto (Datei-ID, z. B. per WhatsApp empfangen). Ist die Frist überschritten, erinnert DOM den Handwerker automatisch per Mail-Entwurf.",
+    input_schema: {
+      type: "object",
+      properties: {
+        projekt: projectRef,
+        titel: { type: "string", description: "Kurzbeschreibung, z. B. „Kratzer Tischplatte“" },
+        ort: { type: "string", description: "Raum/Ort, z. B. „Besprechung 2.04“" },
+        handwerker: { type: "string", description: "Firma oder Name des Zuständigen (aus Kontakten)" },
+        frist: { type: "string", description: "YYYY-MM-DD" },
+        foto_datei_id: { type: "string" },
+        notiz: { type: "string" },
+      },
+      required: ["projekt", "titel"],
+    },
+  },
+  {
+    name: "maengel",
+    description: "Mängel auflisten (offen oder alle) oder einen Mangel als behoben markieren (Suche im Titel).",
+    input_schema: {
+      type: "object",
+      properties: { projekt: projectRef, behoben: { type: "string", description: "Suchtext des Mangels, der behoben ist" }, alle: { type: "boolean" } },
+    },
+  },
+  {
+    name: "zeit_erfassen",
+    description: "Arbeitszeit für ein Projekt buchen, z. B. „2 h Planung Huber“ → projekt Huber, stunden 2, phase Planung. Mit aktion start/stopp läuft eine Stoppuhr.",
+    input_schema: {
+      type: "object",
+      properties: {
+        projekt: projectRef,
+        aktion: { type: "string", enum: ["buchen", "start", "stopp"], description: "Standard buchen" },
+        stunden: { type: "number", description: "Dauer in Stunden, z. B. 1.5" },
+        phase: { type: "string" },
+        datum: { type: "string", description: "YYYY-MM-DD, Standard heute" },
+        notiz: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "zeiten",
+    description: "Gebuchte Stunden eines Projekts (gesamt, je Phase, letzte Einträge) inkl. Wert nach Stundensatz.",
+    input_schema: { type: "object", properties: { projekt: projectRef }, required: ["projekt"] },
+  },
 ];
 
 // ---------------------------------------------------------------- Hilfen
@@ -228,6 +274,33 @@ async function findCategory(owner: string, projectId: string, name: string) {
   const n = name.toLowerCase();
   return rows.find((r: Json) => r.name.toLowerCase() === n) ?? rows.find((r: Json) => r.name.toLowerCase().includes(n) || n.includes(r.name.toLowerCase().split(" ")[0]));
 }
+
+async function findPhase(projectId: string, name?: string) {
+  if (!name) return null;
+  const rows = must(await admin.from("phases").select("id, title").eq("project_id", projectId).ilike("title", `%${name}%`).limit(1));
+  return rows[0] ?? null;
+}
+
+async function findContact(owner: string, name?: string) {
+  if (!name) return null;
+  const s = name.replace(/[,()%*]/g, " ").trim();
+  const rows = must(await admin.from("contacts").select("id, company, name, email").eq("owner_id", owner).or(`company.ilike.%${s}%,name.ilike.%${s}%`).limit(1));
+  return rows[0] ?? null;
+}
+
+/** Beendet laufende Stoppuhren und bucht die Minuten. */
+async function stopTimers(owner: string) {
+  const running = must(await admin.from("time_entries").select("id, started_at, projects(name)").eq("owner_id", owner).not("started_at", "is", null));
+  let last: { minutes: number; project: string } | null = null;
+  for (const r of running) {
+    const minutes = Math.max(1, Math.round((Date.now() - new Date(r.started_at).getTime()) / 60000));
+    must(await admin.from("time_entries").update({ minutes, started_at: null }).eq("id", r.id));
+    last = { minutes, project: r.projects?.name ?? "" };
+  }
+  return last;
+}
+
+const hours = (min: number) => `${(min / 60).toLocaleString("de-AT", { maximumFractionDigits: 1 })} h`;
 
 const stateLabel: Record<string, string> = { im_budget: "im Budget", knapp: "knapp (Kategorie über Plan)", ueberschritten: "ÜBERSCHRITTEN", offen: "kein Budget hinterlegt" };
 
@@ -283,6 +356,8 @@ export async function runTool(owner: string, name: string, input: Json): Promise
         ...must(phasesDue).filter((p: Json) => p.projects?.status === "aktiv").map((p: Json) => `• Phasenende „${p.title}“ (${p.projects.name})`),
         ...must(moves).map((p: Json) => `• UMZUG heute: ${p.name}`),
       ];
+      const defects = must(await admin.from("defects").select("title, due_date, projects(name), contacts(company, name)").eq("owner_id", owner).eq("status", "offen").lte("due_date", day));
+      fristen.push(...defects.map((d: Json) => `• Mangel „${d.title}“ (${d.projects?.name ?? ""})${d.contacts ? `, ${d.contacts.company ?? d.contacts.name}` : ""} – Frist ${dateDE(d.due_date, tz)}`));
       if (fristen.length) out.push("Fristen:\n" + fristen.join("\n"));
       return out.join("\n\n");
     }
@@ -323,8 +398,12 @@ export async function runTool(owner: string, name: string, input: Json): Promise
         start_date: input.start || localNow(tz).date, move_date: input.umzug ?? null, end_date: input.uebergabe ?? null,
         budget_total: input.budget ?? 0, workplaces: input.arbeitsplaetze ?? null, area_sqm: input.flaeche_m2 ?? null, style: input.stil ?? null,
       }).select("*").single());
-      must(await admin.rpc("apply_project_template", { p_project: p.id }));
-      return `Projekt „${p.name}“ angelegt mit 13 Phasen, Aufgaben und Budgetkategorien. [id ${p.id}]`;
+      const tpl = input.vorlage
+        ? must(await admin.from("project_templates").select("name, template").eq("owner_id", owner).ilike("name", `%${input.vorlage}%`).limit(1))[0]
+        : null;
+      must(await admin.rpc("apply_project_template", { p_project: p.id, p_template: tpl?.template ?? null }));
+      const count = tpl?.template?.phases?.length ?? 13;
+      return `Projekt „${p.name}“ angelegt mit ${count} Phasen${tpl ? ` (Vorlage „${tpl.name}“)` : ""}, Aufgaben und Budgetkategorien. [id ${p.id}]`;
     }
 
     case "aufgabe_anlegen": {
@@ -488,6 +567,67 @@ export async function runTool(owner: string, name: string, input: Json): Promise
       }
       const r = await startVisualization(owner, p.id, input.prompt, imageUrl);
       return r.status === "fertig" ? "Visualisierung fertig und im Projekt gespeichert." : "Visualisierung läuft. Das Bild erscheint in wenigen Minuten im Projekt unter Dateien.";
+    }
+
+    case "mangel_erfassen": {
+      const p = await findProject(owner, input.projekt);
+      const c = await findContact(owner, input.handwerker);
+      must(await admin.from("defects").insert({
+        owner_id: owner, project_id: p.id, title: input.titel, location: input.ort ?? null, contact_id: c?.id ?? null,
+        due_date: input.frist ?? null, file_id: input.foto_datei_id ?? null, notes: input.notiz ?? null,
+      }));
+      return `Mangel „${input.titel}“ in „${p.name}“ eingetragen${c ? `, zuständig ${c.company ?? c.name}` : input.handwerker ? ` (Kontakt „${input.handwerker}“ nicht gefunden)` : ""}${input.frist ? `, Frist ${dateDE(input.frist, tz)}` : ""}.`;
+    }
+
+    case "maengel": {
+      const p = input.projekt ? await findProject(owner, input.projekt) : null;
+      if (input.behoben) {
+        let q = admin.from("defects").select("id, title").eq("owner_id", owner).eq("status", "offen").ilike("title", `%${input.behoben}%`);
+        if (p) q = q.eq("project_id", p.id);
+        const rows = must(await q.limit(2));
+        if (!rows.length) return `Kein offener Mangel zu „${input.behoben}“.`;
+        if (rows.length > 1) return "Mehrere Mängel passen – bitte genauer beschreiben.";
+        must(await admin.from("defects").update({ status: "behoben", fixed_at: new Date().toISOString() }).eq("id", rows[0].id));
+        return `„${rows[0].title}“ als behoben markiert.`;
+      }
+      let q = admin.from("defects").select("title, location, status, due_date, contacts(company, name), projects(name)").eq("owner_id", owner).order("due_date");
+      if (p) q = q.eq("project_id", p.id);
+      if (!input.alle) q = q.eq("status", "offen");
+      const rows = must(await q.limit(40));
+      return rows.length ? rows.map((d: Json) => `• ${d.title}${d.location ? ` (${d.location})` : ""} – ${d.projects?.name}, ${d.contacts ? (d.contacts.company ?? d.contacts.name) : "ohne Zuständigen"}${d.due_date ? `, Frist ${dateDE(d.due_date, tz)}` : ""} [${d.status}]`).join("\n") : "Keine offenen Mängel.";
+    }
+
+    case "zeit_erfassen": {
+      const aktion = input.aktion ?? "buchen";
+      if (aktion === "stopp") {
+        const stopped = await stopTimers(owner);
+        return stopped ? `Stoppuhr gestoppt: ${hours(stopped.minutes)} für „${stopped.project}“ gebucht.` : "Es läuft keine Stoppuhr.";
+      }
+      const p = await findProject(owner, input.projekt);
+      const ph = await findPhase(p.id, input.phase);
+      if (aktion === "start") {
+        await stopTimers(owner);
+        must(await admin.from("time_entries").insert({ owner_id: owner, project_id: p.id, phase_id: ph?.id ?? null, entry_date: localNow(tz).date, started_at: new Date().toISOString(), note: input.notiz ?? null }));
+        return `Stoppuhr für „${p.name}“ läuft. Sag „Stopp“, wenn du fertig bist.`;
+      }
+      const min = Math.round(Number(input.stunden ?? 0) * 60);
+      if (!min) return "Wie viele Stunden soll ich buchen?";
+      must(await admin.from("time_entries").insert({ owner_id: owner, project_id: p.id, phase_id: ph?.id ?? null, entry_date: input.datum || localNow(tz).date, minutes: min, note: input.notiz ?? null }));
+      return `${hours(min)} für „${p.name}“${ph ? ` (${ph.title})` : ""} gebucht.`;
+    }
+
+    case "zeiten": {
+      const p = await findProject(owner, input.projekt);
+      const rows = must(await admin.from("time_entries").select("entry_date, minutes, note, phases(title)").eq("project_id", p.id).not("minutes", "is", null).order("entry_date", { ascending: false }));
+      const total = rows.reduce((a: number, r: Json) => a + r.minutes, 0);
+      const byPhase: Record<string, number> = {};
+      for (const r of rows) byPhase[r.phases?.title ?? "Ohne Phase"] = (byPhase[r.phases?.title ?? "Ohne Phase"] ?? 0) + r.minutes;
+      const rate = Number(profile.hourly_rate ?? 0);
+      return [
+        `„${p.name}“: ${hours(total)} gesamt${rate ? ` = ${eur(total / 60 * rate)} bei ${eur(rate)}/h` : ""}.`,
+        Object.entries(byPhase).map(([k, v]) => `• ${k}: ${hours(v)}`).join("\n"),
+        rows.length ? "Letzte Einträge:\n" + rows.slice(0, 8).map((r: Json) => `• ${dateDE(r.entry_date, tz)}: ${hours(r.minutes)}${r.note ? ` – ${r.note}` : ""}`).join("\n") : "",
+      ].filter(Boolean).join("\n");
     }
 
     case "desktop_auftrag": {

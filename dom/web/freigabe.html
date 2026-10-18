@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Freigabe</title>
+  <link rel="icon" href="icons/favicon.png">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    .approve { max-width: 640px; margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 16px 48px; }
+    .approve-head { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .approve-head img { width: 44px; height: 44px; object-fit: contain; }
+    .approve-preview { border-radius: 18px; overflow: hidden; background: var(--bg-grouped-secondary); margin-bottom: 16px; }
+    .approve-preview img { display: block; width: 100%; height: auto; }
+    .approve-preview iframe { display: block; width: 100%; height: 70vh; border: 0; }
+    .approve-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+    .approve-actions .btn { min-height: 50px; font: var(--t-headline); }
+    .approve-result { text-align: center; padding: 32px 16px; }
+    .approve-result svg { width: 56px; height: 56px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <main class="approve" id="root"><div class="center-load"><div class="spinner" role="status" aria-label="Wird geladen"></div></div></main>
+  <script type="module">
+    import { FUNCTION_URL, SUPABASE_KEY } from "./js/config.js";
+    import { esc } from "./js/ui.js";
+    import { icon } from "./js/icons.js";
+
+    const root = document.getElementById("root");
+    const token = location.hash.slice(1);
+    const endpoint = `${FUNCTION_URL}/approval/${encodeURIComponent(token)}`;
+    const headers = { apikey: SUPABASE_KEY, "Content-Type": "application/json" };
+    const date = (d) => new Intl.DateTimeFormat("de-AT", { day: "numeric", month: "long", year: "numeric" }).format(new Date(d));
+
+    function head(a) {
+      return `<div class="approve-head"><img src="icons/logo-glass.png" alt="">
+        <div><div class="t-headline">${esc(a?.from || "Freigabe")}</div><div class="t-footnote secondary">${esc(a?.project ?? "")}</div></div></div>`;
+    }
+
+    function result(a) {
+      const ok = a.status === "freigegeben";
+      root.innerHTML = `${head(a)}<div class="card approve-result">
+        <span style="color:var(--${ok ? "positive" : "critical"})">${icon(ok ? "check" : "close")}</span>
+        <h1 class="t-title2">${ok ? "Freigegeben" : "Änderungen gewünscht"}</h1>
+        <p class="secondary">„${esc(a.title)}“ · ${esc(a.client_name ?? "")}${a.decided_at ? `, ${date(a.decided_at)}` : ""}</p>
+        ${a.client_comment ? `<p>„${esc(a.client_comment)}“</p>` : ""}
+        <p class="t-footnote secondary">Vielen Dank! Wir wurden automatisch benachrichtigt.</p></div>`;
+    }
+
+    async function load() {
+      if (!/^[0-9a-f]{20,}$/.test(token)) throw new Error("Dieser Link ist unvollständig.");
+      const res = await fetch(endpoint, { headers });
+      const a = await res.json();
+      if (!res.ok) throw new Error(a.error || "Freigabe nicht gefunden.");
+      document.title = `Freigabe: ${a.title}`;
+      if (a.status !== "offen") return result(a);
+
+      const preview = !a.file ? "" : a.file.mime?.startsWith("image/")
+        ? `<div class="approve-preview"><img src="${esc(a.file.url)}" alt="${esc(a.title)}"></div>`
+        : `<div class="approve-preview"><iframe src="${esc(a.file.url)}" title="${esc(a.file.name)}"></iframe></div>
+           <p class="mb-16"><a class="btn btn-gray" href="${esc(a.file.url)}" target="_blank" rel="noopener">${icon("doc", "sm")}${esc(a.file.name)} öffnen</a></p>`;
+
+      root.innerHTML = `${head(a)}
+        <h1 class="t-large-title mb-16">${esc(a.title)}</h1>
+        ${a.description ? `<p class="mb-16">${esc(a.description)}</p>` : ""}
+        ${preview}
+        <form data-form novalidate>
+          <section class="group"><ul class="list form-list">
+            <li><div class="field"><label for="n">Ihr Name</label><input id="n" name="name" required autocomplete="name" placeholder="Vor- und Nachname"></div></li>
+            <li><div class="field stacked"><label for="c">Anmerkung</label><textarea id="c" name="comment" rows="3" placeholder="Optional – bei Änderungswünschen bitte kurz beschreiben"></textarea></div></li>
+          </ul></section>
+          <p class="group-footer critical" data-error hidden></p>
+          <div class="approve-actions">
+            <button type="submit" class="btn btn-gray" value="abgelehnt">Änderungen</button>
+            <button type="submit" class="btn btn-filled" value="freigegeben">Freigeben</button>
+          </div>
+        </form>`;
+
+      const form = root.querySelector("[data-form]");
+      const err = root.querySelector("[data-error]");
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const decision = e.submitter?.value;
+        const name = form.name.value.trim();
+        const comment = form.comment.value.trim();
+        err.hidden = true;
+        if (!name) { err.textContent = "Bitte geben Sie Ihren Namen an."; err.hidden = false; form.name.focus(); return; }
+        if (decision === "abgelehnt" && !comment) { err.textContent = "Bitte beschreiben Sie kurz, was geändert werden soll."; err.hidden = false; form.comment.focus(); return; }
+        form.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        try {
+          const res = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ decision, name, comment }) });
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.error || "Das hat nicht geklappt.");
+          result({ ...a, status: decision, client_name: name, client_comment: comment || null, decided_at: new Date().toISOString() });
+        } catch (x) {
+          err.textContent = x.message; err.hidden = false;
+          form.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        }
+      });
+    }
+
+    load().catch((e) => {
+      root.innerHTML = `${head(null)}<div class="card approve-result"><span class="secondary">${icon("info")}</span>
+        <h1 class="t-title2">Freigabe nicht verfügbar</h1><p class="secondary">${esc(e.message)}</p></div>`;
+    });
+  </script>
+</body>
+</html>

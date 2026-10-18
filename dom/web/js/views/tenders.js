@@ -206,7 +206,7 @@ async function detail(ctx) {
     : `
       <div class="card mb-16 t-subhead">${icon("sparkle", "sm")} ${recommendation}</div>
       <div class="table-wrap mb-16"><table class="data">
-        <thead><tr><th>Position</th><th class="r">Menge</th>${totals.map((o) => `<th class="r">${esc(o.bidder)}${o.status === "vergeben" ? " ✓" : ""}</th>`).join("")}</tr></thead>
+        <thead><tr><th>Position</th><th class="r">Menge</th>${totals.map((o) => { const src = offers.find((x) => x.id === o.offer_id); return `<th class="r">${esc(o.bidder)}${o.status === "vergeben" ? " ✓" : ""}${src?.source === "gmail" ? `<br><span class="pill accent small">${icon("mail", "sm")}aus Gmail</span>` : ""}</th>`; }).join("")}</tr></thead>
         <tbody>${positions.map((pos) => `<tr><td>${esc(pos.title)}</td><td class="r">${num(pos.quantity)} ${esc(pos.unit)}</td>
           ${totals.map((o) => { const ep = price(o.offer_id, pos.id); return ep == null ? `<td class="r critical">fehlt</td>`
             : `<td class="r ${Number(ep) === bestPerPos[pos.id] && totals.length > 1 ? "best" : ""}">${eur(Number(ep) * Number(pos.quantity))}<br><span class="t-caption secondary">EP ${eur(ep, true)}</span></td>`; }).join("")}</tr>`).join("")}
@@ -238,11 +238,11 @@ async function detail(ctx) {
       return `<li><div class="cell">
         <span class="cell-text"><span class="cell-title">${esc(b.contacts.company ?? b.contacts.name)}</span>
         <span class="cell-sub">${esc(b.contacts.email ?? "keine E-Mail")}${b.contacts.trade ? ` · ${esc(b.contacts.trade)}` : ""}</span></span>
-        ${hasOffer ? '<span class="pill positive">Angebot da</span>' : b.invited_at ? `<span class="pill accent">Angefragt ${fmtDate(b.invited_at, { day: "numeric", month: "short" })}</span>` : ""}
+        ${hasOffer ? '<span class="pill positive">Angebot da</span>' : b.followup_at ? `<span class="pill warning">Erinnert ${fmtDate(b.followup_at, { day: "numeric", month: "short" })}</span>` : b.invited_at ? `<span class="pill accent">Angefragt ${fmtDate(b.invited_at, { day: "numeric", month: "short" })}</span>` : ""}
         <button class="btn btn-tinted small" data-invite="${b.contact_id}">${icon("mail", "sm")}Anfrage</button>
       </div></li>`;
     }).join("")}<li><button class="cell btn-plain" data-action="add-bidder">${icon("plus", "sm")} Bieter hinzufügen</button></li></ul>
-    <p class="group-footer">„Anfrage“ lässt den Assistenten eine Angebotsanfrage mit allen Positionen formulieren. Du prüfst den Text und speicherst ihn als Gmail-Entwurf.</p></section>`;
+    <p class="group-footer">„Anfrage“ lässt den Assistenten eine Angebotsanfrage mit allen Positionen formulieren. Du prüfst den Text und speicherst ihn als Gmail-Entwurf. Sobald die Ausschreibung versendet ist, übernimmt DOM Angebote (PDF) dieser Bieter automatisch aus Gmail und legt einen Tag vor der Frist Erinnerungen an alle an, die noch nicht angeboten haben.</p></section>`;
 
   ctx.root.innerHTML = `
     ${header({ title: t.title, subtitle: `${esc(p.name)} · <span class="pill ${statusTone}">${statusLabel}</span>${t.deadline ? ` · Frist ${fmtDate(t.deadline)}` : ""}`,

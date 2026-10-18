@@ -1,8 +1,9 @@
 // Projekte: Liste und Projektübersicht mit Fahrplan (Phasen → Aufgaben).
 import { db, q } from "../supa.js";
+import { allTemplates, templateFromProject } from "../templates.js";
 import { icon } from "../icons.js";
 import {
-  actionSheet, budgetPill, confirmDialog, empty, errorToast, esc, eur, fmtDate, formSheet, header, isoDate,
+  actionSheet, addDays, budgetPill, confirmDialog, empty, errorToast, esc, eur, fmtDate, formSheet, header, isoDate,
   navButton, progress, relDay, ring, schedulePill, segmented, toast,
 } from "../ui.js";
 
@@ -20,11 +21,15 @@ export async function projectSheet(project = null) {
     ? (await q(db.from("contacts").select("company, name").eq("id", project.client_id).single())).company ?? ""
     : "";
   const isNew = !project;
+  const templates = isNew ? await allTemplates() : [];
   return formSheet({
     title: isNew ? "Neues Projekt" : "Projekt bearbeiten",
     confirm: isNew ? "Anlegen" : "Sichern",
-    values: { ...(project ?? { start_date: isoDate() }), client: clientName },
+    values: { ...(project ?? { start_date: isoDate() }), client: clientName, template: "" },
     sections: [
+      ...(isNew ? [{ fields: [
+        { name: "template", label: "Vorlage", type: "select", options: templates.map((t) => [t.id, t.name]) },
+      ], footer: "Eigene Vorlagen sicherst du aus einem bestehenden Projekt (Menü „…“ → Als Vorlage sichern)." }] : []),
       { fields: [
         { name: "name", label: "Name", required: true, placeholder: "z. B. Kanzlei Huber – 3. OG" },
         { name: "client", label: "Kunde", placeholder: "Firma" },
@@ -34,7 +39,7 @@ export async function projectSheet(project = null) {
         { name: "start_date", label: "Start", type: "date", required: true },
         { name: "move_date", label: "Umzug", type: "date" },
         { name: "end_date", label: "Übergabe", type: "date" },
-      ], footer: isNew ? "Aus diesen Terminen plant DOM die 13 Phasen von Naturmaß bis Abnahme automatisch. Du kannst alles später anpassen." : "" },
+      ], footer: isNew ? "Aus diesen Terminen verteilt DOM die Phasen der Vorlage automatisch. Phasen und Aufgaben kannst du danach jederzeit ändern, hinzufügen oder entfernen." : "" },
       { header: "Eckdaten", fields: [
         { name: "budget_total", label: "Budget", type: "money", suffix: "€", placeholder: "0" },
         { name: "workplaces", label: "Arbeitsplätze", type: "number", placeholder: "0" },
@@ -59,7 +64,8 @@ export async function projectSheet(project = null) {
       };
       if (isNew) {
         const p = await q(db.from("projects").insert(row).select().single());
-        await q(db.rpc("apply_project_template", { p_project: p.id }));
+        const tpl = templates.find((t) => t.id === (v.template ?? ""));
+        await q(db.rpc("apply_project_template", { p_project: p.id, p_template: tpl?.template ?? null }));
         return p;
       }
       return q(db.from("projects").update(row).eq("id", project.id).select().single());
@@ -201,6 +207,80 @@ export function bindTasks(root, rerender) {
   });
 }
 
+// ---------------------------------------------------------------- Phasen bearbeiten
+
+async function phaseSheet(projectId, phases, phase = null) {
+  const last = phases[phases.length - 1];
+  return formSheet({
+    title: phase ? "Phase" : "Neue Phase",
+    confirm: phase ? "Sichern" : "Hinzufügen",
+    values: phase ?? { after: last?.id ?? "", start_date: last?.due_date ?? isoDate(), due_date: last?.due_date ? addDays(last.due_date, 14) : addDays(isoDate(), 14) },
+    sections: [
+      { fields: [
+        { name: "title", label: "Name", required: true, placeholder: "z. B. Akustikmessung" },
+        ...(phase ? [] : [{ name: "after", label: "Einfügen nach", type: "select", options: [["", "Ganz am Anfang"], ...phases.map((ph) => [ph.id, ph.title])] }]),
+      ] },
+      { fields: [
+        { name: "start_date", label: "Beginn", type: "date" },
+        { name: "due_date", label: "Ende", type: "date" },
+      ], footer: "Status und Fortschritt ergeben sich aus den Aufgaben der Phase." },
+    ],
+    onSubmit: async (v) => {
+      if (v.start_date && v.due_date && v.due_date < v.start_date) throw new Error("Das Ende liegt vor dem Beginn.");
+      if (phase) return q(db.from("phases").update({ title: v.title, start_date: v.start_date, due_date: v.due_date }).eq("id", phase.id));
+      const idx = v.after ? phases.findIndex((ph) => ph.id === v.after) + 1 : 0;
+      const ordered = [...phases];
+      const row = await q(db.from("phases").insert({
+        project_id: projectId, key: `eigen-${crypto.randomUUID().slice(0, 8)}`, title: v.title, position: idx + 1,
+        start_date: v.start_date, due_date: v.due_date,
+      }).select().single());
+      ordered.splice(idx, 0, row);
+      await renumber(ordered);
+      return row;
+    },
+  });
+}
+
+/** Schreibt die Reihenfolge (position 1…n) zurück, nur wo sie sich ändert. */
+async function renumber(ordered) {
+  await Promise.all(ordered.map((ph, i) => (ph.position === i + 1 ? null : q(db.from("phases").update({ position: i + 1 }).eq("id", ph.id)))));
+}
+
+async function movePhase(phases, id, dir) {
+  const ordered = [...phases];
+  const i = ordered.findIndex((ph) => ph.id === id);
+  const j = i + dir;
+  if (j < 0 || j >= ordered.length) return;
+  [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+  await renumber(ordered);
+}
+
+async function deletePhase(phases, tasks, ph) {
+  const n = tasks.filter((t) => t.phase_id === ph.id).length;
+  const ok = await confirmDialog({
+    title: `„${ph.title}“ entfernen?`,
+    message: n ? `Die ${n === 1 ? "Aufgabe" : `${n} Aufgaben`} dieser Phase ${n === 1 ? "wird" : "werden"} ebenfalls gelöscht.` : "",
+    confirm: "Entfernen", destructive: true,
+  });
+  if (!ok) return false;
+  await q(db.from("tasks").delete().eq("phase_id", ph.id));
+  await q(db.from("phases").delete().eq("id", ph.id));
+  await renumber(phases.filter((x) => x.id !== ph.id));
+  return true;
+}
+
+async function saveAsTemplate(p) {
+  const template = await templateFromProject(p.id);
+  const saved = await formSheet({
+    title: "Als Vorlage sichern", confirm: "Sichern",
+    values: { name: p.name.replace(/\s*[–-].*$/, "") },
+    sections: [{ fields: [{ name: "name", label: "Name", required: true }],
+      footer: `${template.phases.length} Phasen mit ${template.phases.reduce((s, x) => s + x.tasks.length, 0)} Aufgaben und die Budgetaufteilung in Prozent. Termine werden bei neuen Projekten neu verteilt.` }],
+    onSubmit: (v) => q(db.from("project_templates").insert({ name: v.name, template })).then(() => v.name),
+  });
+  if (saved) toast(`Vorlage „${saved}“ gesichert`);
+}
+
 // ---------------------------------------------------------------- Projektübersicht
 
 async function count(table, projectId) {
@@ -210,7 +290,8 @@ async function count(table, projectId) {
 
 async function detail(ctx) {
   const id = ctx.params[0];
-  const [p, s, phases, tasks, nItems, nTenders, nLogs, nFiles, nRooms, nextAppt, client] = await Promise.all([
+  const editing = ctx.query.get("edit") === "1";
+  const [p, s, phases, tasks, nItems, nTenders, nLogs, nFiles, nRooms, nextAppt, client, defects, times, approvals] = await Promise.all([
     q(db.from("projects").select("*").eq("id", id).single()),
     q(db.from("v_project_status").select("*").eq("project_id", id).single()),
     q(db.from("phases").select("*").eq("project_id", id).order("position")),
@@ -218,7 +299,14 @@ async function detail(ctx) {
     count("items", id), count("tenders", id), count("logs", id), count("files", id), count("move_rooms", id),
     q(db.from("appointments").select("title, starts_at").eq("project_id", id).gte("starts_at", new Date().toISOString()).order("starts_at").limit(1)),
     db.from("projects").select("contacts(company, name)").eq("id", id).single().then((r) => r.data?.contacts),
+    q(db.from("defects").select("status, due_date").eq("project_id", id)),
+    q(db.from("time_entries").select("minutes").eq("project_id", id)),
+    q(db.from("approvals").select("status").eq("project_id", id)),
   ]);
+  const openDefects = defects.filter((d) => d.status === "offen");
+  const lateDefects = openDefects.filter((d) => d.due_date && d.due_date < isoDate()).length;
+  const minutes = times.reduce((a, t) => a + (t.minutes ?? 0), 0);
+  const pendingApprovals = approvals.filter((a) => a.status === "offen").length;
   const openPhaseId = ctx.query.get("phase") ?? phases.find((ph) => ph.status !== "erledigt")?.id;
   const daysToMove = p.move_date ? Math.round((new Date(`${p.move_date}T12:00`) - new Date()) / 86400000) : null;
   const budgetTone = { im_budget: "positive", knapp: "warning", ueberschritten: "critical" }[s.budget_state] ?? "";
@@ -243,15 +331,28 @@ async function detail(ctx) {
       </div>
 
       <section class="group">
-        <h2 class="group-header">Fahrplan<button class="btn btn-plain" data-action="add-task">Aufgabe</button></h2>
-        <ul class="list">
-          ${phases.map((ph) => {
+        <h2 class="group-header">Fahrplan<span class="row">${editing
+          ? '<button class="btn btn-plain bold" data-action="edit-done">Fertig</button>'
+          : `${phases.length ? '<button class="btn btn-plain" data-action="edit-phases">Bearbeiten</button>' : ""}<button class="btn btn-plain" data-action="add-task">Aufgabe</button>`}</span></h2>
+        ${editing ? `<ul class="list">
+          ${phases.map((ph, i) => `<li><div class="cell phase-edit">
+            <button class="icon-btn minus" data-del-phase="${ph.id}" aria-label="${esc(ph.title)} entfernen">${icon("minusCircle")}</button>
+            <button class="cell-text plain" data-edit-phase="${ph.id}"><span class="cell-title">${esc(ph.title)}</span>
+              <span class="cell-sub">${fmtDate(ph.start_date, { day: "numeric", month: "short" })} – ${fmtDate(ph.due_date, { day: "numeric", month: "short" })} · ${tasksOfPhase(ph.id).length} Aufgaben</span></button>
+            <button class="icon-btn" data-move="${ph.id}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="${esc(ph.title)} nach oben">${icon("arrowUp")}</button>
+            <button class="icon-btn" data-move="${ph.id}" data-dir="1" ${i === phases.length - 1 ? "disabled" : ""} aria-label="${esc(ph.title)} nach unten">${icon("arrowDown")}</button>
+          </div></li>`).join("")}
+          <li><button class="cell add-row" data-action="add-phase">${icon("plus", "sm")}Phase hinzufügen</button></li>
+        </ul>
+        <p class="group-footer">Tippe auf eine Phase, um Namen und Zeitraum zu ändern. Mit den Pfeilen änderst du die Reihenfolge.</p>`
+        : `<ul class="list">
+          ${phases.map((ph, i) => {
             const pt = tasksOfPhase(ph.id);
             const done = pt.filter((t) => t.done).length;
             const late = ph.status !== "erledigt" && ph.due_date && ph.due_date < isoDate();
             return `<li><details class="disclosure" ${ph.id === openPhaseId ? "open" : ""} data-phase="${ph.id}">
               <summary class="cell">
-                <span class="phase-dot ${ph.status}">${ph.status === "erledigt" ? icon("check") : ph.position}</span>
+                <span class="phase-dot ${ph.status}">${ph.status === "erledigt" ? icon("check") : i + 1}</span>
                 <span class="cell-text"><span class="cell-title ${ph.status === "aktiv" ? "t-headline" : ""}">${esc(ph.title)}</span>
                 <span class="cell-sub">${done}/${pt.length} erledigt · ${fmtDate(ph.start_date, { day: "numeric", month: "short" })} – <span class="${late ? "critical" : ""}">${fmtDate(ph.due_date, { day: "numeric", month: "short" })}</span></span></span>
                 <span class="chevron">${icon("chevronRight")}</span>
@@ -264,7 +365,7 @@ async function detail(ctx) {
             <span class="cell-text"><span class="cell-title">Weitere Aufgaben</span></span><span class="chevron">${icon("chevronRight")}</span></summary>
             <ul class="subtasks">${looseTasks.map((t) => taskRow(t)).join("")}</ul></details></li>` : ""}
         </ul>
-        ${phases.length ? "" : `<p class="group-footer">Dieses Projekt hat noch keinen Fahrplan. <button class="btn btn-plain" data-action="template">Standard-Fahrplan anlegen</button></p>`}
+        ${phases.length ? "" : `<p class="group-footer">Dieses Projekt hat noch keinen Fahrplan. <button class="btn btn-plain" data-action="template">Standard-Fahrplan anlegen</button> <button class="btn btn-plain" data-action="add-phase">Eigene Phase</button></p>`}`}
       </section>
 
       <section class="group">
@@ -277,6 +378,9 @@ async function detail(ctx) {
           ${navRow(`#/projekte/${id}/doku`, "journal", "var(--system-teal)", "Dokumentation", `${nLogs} Einträge`)}
           ${navRow(`#/projekte/${id}/dateien`, "photo", "var(--system-purple)", "Pläne, Fotos & Visualisierung", `${nFiles}`)}
           ${navRow(`#/projekte/${id}/umzug`, "truck", "var(--system-blue)", "Umzug", `${nRooms} Räume`)}
+          ${navRow(`#/projekte/${id}/maengel`, "wrench", "var(--system-red)", "Mängel", openDefects.length ? `${openDefects.length} offen${lateDefects ? ` · ${lateDefects} überfällig` : ""}` : "keine offen")}
+          ${navRow(`#/projekte/${id}/zeiten`, "timer", "var(--system-gray)", "Zeiterfassung", `${(minutes / 60).toLocaleString("de-AT", { maximumFractionDigits: 1 })} h`)}
+          ${navRow(`#/projekte/${id}/freigaben`, "seal", "var(--system-green)", "Kunden-Freigaben", pendingApprovals ? `${pendingApprovals} wartet` : `${approvals.length}`)}
         </ul>
       </section>
       ${p.style || p.description ? `<section class="group"><h2 class="group-header">Konzept</h2><div class="card stack">
@@ -289,9 +393,20 @@ async function detail(ctx) {
   ctx.root.addEventListener("click", async (e) => {
     const addPhase = e.target.closest("[data-add-to-phase]");
     if (addPhase) { if (await taskSheet({ projectId: id, phaseId: addPhase.dataset.addToPhase })) ctx.rerender(); return; }
+    try {
+      const del = e.target.closest("[data-del-phase]");
+      if (del) { if (await deletePhase(phases, tasks, phases.find((x) => x.id === del.dataset.delPhase))) ctx.rerender(); return; }
+      const ed = e.target.closest("[data-edit-phase]");
+      if (ed) { if (await phaseSheet(id, phases, phases.find((x) => x.id === ed.dataset.editPhase))) ctx.rerender(); return; }
+      const mv = e.target.closest("[data-move]");
+      if (mv) { await movePhase(phases, mv.dataset.move, Number(mv.dataset.dir)); ctx.rerender(); return; }
+    } catch (err) { errorToast(err); return; }
     const a = e.target.closest("[data-action]");
     if (!a) return;
     try {
+      if (a.dataset.action === "edit-phases") location.hash = `#/projekte/${id}?edit=1`;
+      if (a.dataset.action === "edit-done") location.hash = `#/projekte/${id}`;
+      if (a.dataset.action === "add-phase") { if (await phaseSheet(id, phases)) ctx.rerender(); }
       if (a.dataset.action === "add-task") { if (await taskSheet({ projectId: id })) ctx.rerender(); }
       if (a.dataset.action === "ask") location.hash = `#/assistent?projekt=${encodeURIComponent(p.name)}`;
       if (a.dataset.action === "template") { await q(db.rpc("apply_project_template", { p_project: id })); ctx.rerender(); }
@@ -300,11 +415,15 @@ async function detail(ctx) {
           { label: "Bearbeiten", value: "edit" },
           { label: p.status === "aktiv" ? "Pausieren" : "Aktivieren", value: "toggle" },
           { label: "Statusbericht an Kunden", value: "report" },
+          { label: "Phasen bearbeiten", value: "phases" },
+          { label: "Als Vorlage sichern", value: "template" },
           { label: "Als abgeschlossen markieren", value: "done" },
         ] });
         if (choice === "edit") { if (await projectSheet(p)) ctx.rerender(); }
         if (choice === "toggle") { await q(db.from("projects").update({ status: p.status === "aktiv" ? "pausiert" : "aktiv" }).eq("id", id)); ctx.rerender(); }
         if (choice === "report") await statusReport(p, s, phases, tasks, client);
+        if (choice === "phases") location.hash = `#/projekte/${id}?edit=1`;
+        if (choice === "template") await saveAsTemplate(p);
         if (choice === "done") {
           if (await confirmDialog({ title: "Projekt abschließen?", message: "Es erscheint dann nicht mehr in „Heute“ und im Briefing.", confirm: "Abschließen" })) {
             await q(db.from("projects").update({ status: "abgeschlossen" }).eq("id", id));

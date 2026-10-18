@@ -1,6 +1,7 @@
 // DOM – Server-Funktion. Ein Einstiegspunkt mit Routen:
 //   App (Bearer-Login):  /assistant, /compose, /extract, /connectors/*, /google/*, /visualize, /whatsapp/test
-//   Öffentlich:          /whatsapp/webhook, /google/callback, /ics/<token> (Kalender-Abo), /tick (Cron-Geheimnis), /bridge/* (Brücken-Token)
+//   Öffentlich:          /whatsapp/webhook, /google/callback, /ics/<token> (Kalender-Abo), /approval/<token> (Kunden-Freigabe),
+//                        /tick (Cron-Geheimnis), /bridge/* (Brücken-Token)
 import { SUPABASE_URL, admin, getProfile, internalSetting, must, userFromRequest } from "./db.ts";
 import { AIUnavailable, askAssistant, compose, logExchange, testClaude } from "./ai.ts";
 import { getConnector, getSecrets, saveConnector, setStatus } from "./connectors.ts";
@@ -11,7 +12,8 @@ import { parseWebhook, sendWhatsApp, storeInboundMedia, testWhatsApp, verifyWebh
 import { startVisualization, testHiggsfield } from "./higgsfield.ts";
 import { handleBridge } from "./bridge.ts";
 import { testMcp } from "./mcp.ts";
-import { tick } from "./tick.ts";
+import { deliver, tick } from "./tick.ts";
+import { decideApproval, getApproval } from "./approvals.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -98,6 +100,15 @@ Deno.serve(async (req) => {
     if (path === "/google/callback") return await handleCallback(url);
     const ics = path.match(/^\/ics\/([0-9a-f]{20,})(?:\.ics)?$/);
     if (ics) return await icsFeed(ics[1]);
+    const approval = path.match(/^\/approval\/([0-9a-f]{20,})$/);
+    if (approval) {
+      if (req.method === "GET") {
+        const a = await getApproval(approval[1]);
+        return a ? json(a) : json({ error: "Freigabe nicht gefunden" }, 404);
+      }
+      const r = await decideApproval(approval[1], await req.json().catch(() => ({})), deliver);
+      return json(r, r.status);
+    }
     if (path === "/tick") {
       if (req.headers.get("x-cron-secret") !== (await internalSetting("cron_secret"))) return json({ error: "Forbidden" }, 403);
       background(tick().then((r) => console.log("tick:", r)));

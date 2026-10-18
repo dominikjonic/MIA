@@ -142,6 +142,39 @@ export async function searchMail(owner: string, query: string, max = 8) {
   return out;
 }
 
+/** Nachrichten-IDs zu einer Gmail-Suche. */
+export async function listMessageIds(owner: string, query: string, max = 20): Promise<string[]> {
+  const list = await gapi(owner, `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent(query)}`);
+  return (list.messages ?? []).map((m: { id: string }) => m.id);
+}
+
+type Part = { filename?: string; mimeType?: string; body?: { attachmentId?: string }; parts?: Part[] };
+
+/** Absender, Betreff und PDF-Anhänge einer Nachricht. */
+export async function messageWithPdfs(owner: string, id: string) {
+  const msg = await gapi(owner, `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`);
+  const h = Object.fromEntries((msg.payload?.headers ?? []).map((x: { name: string; value: string }) => [x.name.toLowerCase(), x.value]));
+  const pdfs: { filename: string; attachmentId: string }[] = [];
+  const walk = (p: Part) => {
+    if (p.body?.attachmentId && (p.mimeType === "application/pdf" || /\.pdf$/i.test(p.filename ?? ""))) {
+      pdfs.push({ filename: p.filename || "angebot.pdf", attachmentId: p.body.attachmentId });
+    }
+    (p.parts ?? []).forEach(walk);
+  };
+  walk(msg.payload ?? {});
+  const from = String(h.from ?? "");
+  const email = (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
+  return { id, email, subject: String(h.subject ?? ""), pdfs };
+}
+
+export async function attachmentBytes(owner: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
+  const a = await gapi(owner, `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`);
+  const bin = atob(String(a.data).replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
 export async function upsertCalendarEvent(owner: string, appointmentId: string) {
   const a = must(await admin.from("appointments").select("*, projects(name)").eq("id", appointmentId).eq("owner_id", owner).single());
   const end = a.ends_at ?? new Date(new Date(a.starts_at).getTime() + 60 * 60 * 1000).toISOString();

@@ -60,6 +60,18 @@
   --critical: var(--system-red);
 
   /* ---------- Materialien (Liquid Glass – nur Funktionsebene) ---------- */
+  /* Liquid Glass: Fläche, Kanten-Lichter (Specular), Schatten, Linse für Auswahl */
+  --lg-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.34) 100%);
+  --lg-fill-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.6) 100%);
+  --lg-filter: blur(14px) saturate(190%) brightness(1.05);
+  --lg-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.95), inset 0 -1px 1px rgba(255, 255, 255, 0.45), inset 1px 0 0.5px rgba(255, 255, 255, 0.35), inset -1px 0 0.5px rgba(255, 255, 255, 0.35);
+  --lg-shadow: 0 10px 30px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
+  --lg-border: rgba(255, 255, 255, 0.6);
+  --lg-sheen: radial-gradient(120% 70% at 18% 0%, rgba(255, 255, 255, 0.65), transparent 55%), radial-gradient(90% 70% at 100% 110%, rgba(255, 255, 255, 0.3), transparent 60%);
+  --lg-lens: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.7));
+  --ambient-1: rgba(0, 122, 255, 0.10);
+  --ambient-2: rgba(175, 82, 222, 0.08);
+  --ambient-3: rgba(48, 176, 199, 0.09);
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(255, 255, 255, 0.6);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -164,6 +176,16 @@
     --separator: rgba(84, 84, 88, 0.6);
     --separator-opaque: #38383a;
 
+    --lg-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+    --lg-fill-strong: linear-gradient(180deg, rgba(60, 60, 64, 0.85) 0%, rgba(40, 40, 44, 0.75) 100%);
+    --lg-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), inset 0 -1px 1px rgba(255, 255, 255, 0.08), inset 1px 0 0.5px rgba(255, 255, 255, 0.12), inset -1px 0 0.5px rgba(255, 255, 255, 0.12);
+    --lg-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --lg-border: rgba(255, 255, 255, 0.14);
+    --lg-sheen: radial-gradient(120% 70% at 18% 0%, rgba(255, 255, 255, 0.16), transparent 55%), radial-gradient(90% 70% at 100% 110%, rgba(255, 255, 255, 0.06), transparent 60%);
+    --lg-lens: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.1));
+    --ambient-1: rgba(10, 132, 255, 0.16);
+    --ambient-2: rgba(191, 90, 242, 0.12);
+    --ambient-3: rgba(64, 203, 224, 0.10);
     --glass-bg: rgba(30, 30, 32, 0.66);
     --glass-border: rgba(255, 255, 255, 0.1);
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -172,6 +194,17 @@
   }
 }
 :root[data-theme="dark"] {
+  --lg-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+  --lg-fill-strong: linear-gradient(180deg, rgba(60, 60, 64, 0.85) 0%, rgba(40, 40, 44, 0.75) 100%);
+  --lg-edge: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), inset 0 -1px 1px rgba(255, 255, 255, 0.08), inset 1px 0 0.5px rgba(255, 255, 255, 0.12), inset -1px 0 0.5px rgba(255, 255, 255, 0.12);
+  --lg-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --lg-border: rgba(255, 255, 255, 0.14);
+  --lg-sheen: radial-gradient(120% 70% at 18% 0%, rgba(255, 255, 255, 0.16), transparent 55%), radial-gradient(90% 70% at 100% 110%, rgba(255, 255, 255, 0.06), transparent 60%);
+  --lg-lens: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.1));
+  --ambient-1: rgba(10, 132, 255, 0.16);
+  --ambient-2: rgba(191, 90, 242, 0.12);
+  --ambient-3: rgba(64, 203, 224, 0.10);
+
   --system-blue: #0a84ff; --system-green: #30d158; --system-red: #ff453a; --system-orange: #ff9f0a;
   --system-yellow: #ffd60a; --system-indigo: #5e5ce6; --system-purple: #bf5af2; --system-teal: #40cbe0;
   --system-gray2: #636366; --system-gray3: #48484a; --system-gray4: #3a3a3c; --system-gray5: #2c2c2e; --system-gray6: #1c1c1e;
@@ -202,7 +235,7 @@
 
 /* ---------- Transparenz reduzieren: Glas wird opak ---------- */
 @media (prefers-reduced-transparency: reduce) {
-  :root { --glass-filter: none; --glass-bg: var(--bg-grouped-secondary); }
+  :root { --glass-filter: none; --lg-filter: none; --glass-bg: var(--bg-grouped-secondary); --lg-fill: var(--bg-grouped-secondary); --lg-fill-strong: var(--bg-grouped-secondary); --lg-sheen: none; }
 }
 
 /* ---------- Bewegung reduzieren: Überblenden statt Bewegen ---------- */

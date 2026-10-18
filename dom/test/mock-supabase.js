@@ -11,12 +11,16 @@
     profiles: [], connectors: [], contacts: [], projects: [], phases: [], tasks: [], budget_categories: [], costs: [], items: [],
     tenders: [], tender_positions: [], tender_bidders: [], offers: [], offer_prices: [], appointments: [], logs: [], files: [],
     move_rooms: [], reminders: [], messages: [], visualizations: [], bridge_jobs: [],
+    defects: [], time_entries: [], approvals: [], project_templates: [], gmail_imports: [],
   };
   const DEFAULTS = {
     tasks: { done: false, priority: 0, position: 0, created_by: "app", notes: null, remind_at: null, due_date: null, phase_id: null },
     projects: { status: "aktiv", budget_total: 0 },
     phases: { status: "offen" },
-    offers: { status: "eingegangen", discount_pct: 0, extra_costs: 0 },
+    offers: { status: "eingegangen", discount_pct: 0, extra_costs: 0, source: "manuell" },
+    defects: { status: "offen" },
+    approvals: { status: "offen" },
+    time_entries: { minutes: null, started_at: null },
     tenders: { status: "entwurf" },
     items: { quantity: 1, unit: "Stk", source: "manuell", position: 0 },
     contacts: { kind: "lieferant" },
@@ -46,20 +50,22 @@
   const CATS = [["Planung & Honorar", 8], ["Trockenbau", 15], ["Möbel", 45], ["Elektro & IT", 8], ["Boden & Malerei", 7], ["Akustik & Licht", 7], ["Umzug", 5], ["Reserve", 5]];
   const addDays = (s, n) => { const x = new Date(`${s}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 
-  function applyTemplate(pid) {
+  function applyTemplate(pid, tpl = null) {
     const p = T.projects.find((x) => x.id === pid);
+    const phases = tpl?.phases ? tpl.phases.map((x, i) => [x.key ?? `phase${i + 1}`, x.title, x.w ?? 5, x.tasks ?? []]) : TEMPLATE;
+    const cats = tpl?.cats ?? CATS;
     const end = p.end_date ?? (p.move_date ? addDays(p.move_date, 14) : addDays(p.start_date, 90));
     const days = Math.max(Math.round((new Date(end) - new Date(p.start_date)) / 86400000), 14);
-    const total = TEMPLATE.reduce((s, x) => s + x[2], 0);
+    const total = phases.reduce((s, x) => s + x[2], 0);
     let cursor = 0;
-    TEMPLATE.forEach(([key, title, w, tasks], i) => {
+    phases.forEach(([key, title, w, tasks], i) => {
       const start = addDays(p.start_date, Math.floor((days * cursor) / total));
       cursor += w;
       const due = addDays(p.start_date, Math.floor((days * cursor) / total));
       const ph = row("phases", { project_id: pid, key, title, position: i + 1, start_date: start, due_date: due });
       tasks.forEach((t, j) => row("tasks", { project_id: pid, phase_id: ph.id, title: t, due_date: due, position: j + 1, created_by: "vorlage" }));
     });
-    CATS.forEach(([name, pct], j) => row("budget_categories", { project_id: pid, name, planned: Math.round(p.budget_total * pct) / 100, position: j + 1 }));
+    cats.forEach(([name, pct], j) => row("budget_categories", { project_id: pid, name, planned: Math.round(p.budget_total * pct) / 100, position: j + 1 }));
   }
 
   function syncPhase(phaseId) {
@@ -72,6 +78,7 @@
 
   function row(table, data) {
     const r = { id: uid(), owner_id: OWNER, created_at: new Date().toISOString(), ...(DEFAULTS[table] ?? {}), ...data };
+    if (table === "approvals" && !r.token) r.token = Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(16).padStart(2, "0")).join("");
     if (table === "tasks" && r.done && !r.done_at) r.done_at = new Date().toISOString();
     T[table].push(r);
     if (table === "tasks") syncPhase(r.phase_id);
@@ -117,7 +124,7 @@
   // ---------------------------------------------------------------- Query-Builder
   const REL = {
     projects: (r) => r.project_id, phases: (r) => r.phase_id, contacts: (r) => r.contact_id ?? r.client_id,
-    budget_categories: (r) => r.category_id, offers: (r) => r.offer_id,
+    budget_categories: (r) => r.category_id, offers: (r) => r.offer_id, files: (r) => r.file_id,
   };
   function splitTop(s) {
     const out = []; let depth = 0, cur = "";
@@ -286,6 +293,22 @@
   row("messages", { channel: "whatsapp", role: "user", content: "Trockenbau ist fertig, schreib das in die Doku", created_at: at(0, 8, 4) });
   row("messages", { channel: "whatsapp", role: "assistant", content: "Erledigt – Doku-Eintrag bei „Kanzlei Huber – 3. OG“ gespeichert. Soll ich Gruber wegen der Türzarge eine E-Mail entwerfen?", meta: { tools: ["doku_eintrag"] }, created_at: at(0, 8, 5) });
 
+  // Mängel, Zeiten, Freigaben, Vorlagen
+  const foto = row("files", { project_id: p1.id, kind: "foto", storage_path: "x/mangel.jpg", name: "mangel.jpg", mime: "image/jpeg", caption: "Mangel: Türzarge" });
+  row("defects", { project_id: p1.id, title: "Türzarge Besprechungsraum verzogen", location: "3.07 Besprechung", contact_id: T.contacts.find((c) => c.company === "Trockenbau Gruber").id, due_date: d(-3), file_id: foto.id, followup_at: at(-1, 9) });
+  row("defects", { project_id: p1.id, title: "Kratzer Empfangstheke Front", location: "3.01 Empfang", contact_id: tischler.id, due_date: d(4) });
+  row("defects", { project_id: p1.id, title: "Steckdose Bodentank lose", location: "Open Space", due_date: d(7) });
+  row("defects", { project_id: p1.id, title: "Akustikpaneel schief", location: "Open Space", contact_id: tischler.id, status: "behoben", fixed_at: at(-2, 12) });
+  const phx = (n) => ph1[n].id;
+  [[-6, 150, 1, "Naturmaß und Fotos"], [-5, 240, 2, "Entwurfsvarianten"], [-3, 180, 3, "Möblierungsplan"], [-1, 90, 6, "Renderings abgestimmt"], [0, 60, 7, "LV Möbel"]]
+    .forEach(([day, min, ph, note]) => row("time_entries", { project_id: p1.id, entry_date: d(day), minutes: min, phase_id: phx(ph), note }));
+  row("time_entries", { project_id: p1.id, entry_date: d(0), phase_id: phx(7), started_at: new Date(Date.now() - 47 * 60000).toISOString() });
+  T.profiles[0].hourly_rate = 95;
+  row("approvals", { project_id: p1.id, title: "Möblierungsplan Variante B", description: "Bitte bis Freitag freigeben, damit wir bestellen können.", file_id: foto.id });
+  row("approvals", { project_id: p1.id, title: "Farbkonzept Salbeigrün", status: "freigegeben", client_name: "Dr. Maria Huber", client_comment: "Passt so, danke!", decided_at: at(-9, 16) });
+  row("project_templates", { name: "Kanzlei klein", template: { phases: [{ title: "Briefing", w: 2, tasks: ["Briefing-Gespräch"] }, { title: "Planung", w: 5, tasks: ["Plan erstellen", "Freigabe"] }, { title: "Umsetzung", w: 6, tasks: ["Bestellung", "Montage"] }], cats: [["Möbel", 80], ["Reserve", 20]] } });
+  o2.source = "gmail";
+
   // ---------------------------------------------------------------- Client
   const session = { access_token: "test", user: { id: OWNER, email: "dominik@firma.at" } };
   const listeners = [];
@@ -294,7 +317,7 @@
     createClient() {
       return {
         from: (t) => new Q(t),
-        rpc: async (fn, args) => { if (fn === "apply_project_template") applyTemplate(args.p_project); return { data: null, error: null }; },
+        rpc: async (fn, args) => { if (fn === "apply_project_template") applyTemplate(args.p_project, args.p_template); return { data: null, error: null }; },
         auth: {
           getSession: async () => ({ data: { session } }),
           onAuthStateChange: (cb) => { listeners.push(cb); setTimeout(() => cb("INITIAL_SESSION", window.__loggedOut ? null : session), 0); return { data: { subscription: { unsubscribe() {} } } }; },

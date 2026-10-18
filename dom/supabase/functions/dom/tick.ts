@@ -1,9 +1,12 @@
-// Minuten-Takt (pg_cron → POST /dom/tick): Erinnerungen, Terminhinweise, Tagesbriefing, Visualisierungen.
+// Minuten-Takt (pg_cron → POST /dom/tick): Erinnerungen, Terminhinweise, Tagesbriefing, Visualisierungen,
+// viertelstündlich Gmail-Angebotsimport und Nachfass-Automatik.
 import { admin, dateDE, localNow, must, timeDE } from "./db.ts";
 import { AIUnavailable, askAssistant } from "./ai.ts";
 import { runTool } from "./tools.ts";
 import { sendWhatsApp } from "./whatsapp.ts";
 import { pollVisualizations } from "./higgsfield.ts";
+import { followUps, importOffersFromGmail } from "./automation.ts";
+import { getConnector } from "./connectors.ts";
 
 /** Stellt eine Nachricht zu: WhatsApp (falls gewünscht und möglich), sonst im App-Chat. */
 export async function deliver(owner: string, text: string) {
@@ -79,6 +82,24 @@ export async function tick() {
 
   // 5. Laufende Visualisierungen abfragen
   await pollVisualizations();
+
+  // 6. Viertelstündlich: Angebote aus Gmail übernehmen, Nachfassen (Angebotsfristen, überfällige Mängel)
+  if (now.getUTCMinutes() % 15 === 0) {
+    const all = must(await admin.from("profiles").select("*"));
+    for (const p of all) {
+      try {
+        if ((await getConnector(p.owner_id, "google"))?.secrets.refresh_token) {
+          const n = await importOffersFromGmail(p.owner_id, deliver);
+          must(await admin.from("profiles").update({ gmail_checked_at: nowIso }).eq("owner_id", p.owner_id));
+          if (n) log.push(`${n} Angebote aus Gmail`);
+        }
+        const f = await followUps(p.owner_id, p, deliver);
+        if (f) log.push(`${f} Nachfass-Hinweise`);
+      } catch (e) {
+        console.error("Automatik", p.owner_id.slice(0, 8), e);
+      }
+    }
+  }
 
   return log.join(", ");
 }

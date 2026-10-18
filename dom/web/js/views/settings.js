@@ -2,7 +2,8 @@
 import { api, currentUser, db, q } from "../supa.js";
 import { FUNCTION_URL } from "../config.js";
 import { icon } from "../icons.js";
-import { actionSheet, confirmDialog, contentSheet, errorToast, esc, formSheet, header, navButton, toast } from "../ui.js";
+import { actionSheet, confirmDialog, contentSheet, empty, errorToast, esc, formSheet, header, navButton, parseNumber, toast } from "../ui.js";
+import { BUILTIN } from "../templates.js";
 
 export async function signature() {
   const p = await q(db.from("profiles").select("email_signature").maybeSingle());
@@ -232,11 +233,13 @@ async function connectorsView(ctx) {
 // ---------------------------------------------------------------- Einstellungen
 
 async function settingsView(ctx) {
-  const [profile, connectors] = await Promise.all([
+  const [profile, connectors, templates] = await Promise.all([
     q(db.from("profiles").select("*").maybeSingle()),
     q(db.from("connectors").select("kind, status")),
+    q(db.from("project_templates").select("id")),
   ]);
-  const p = profile ?? {};
+  const p = { ...(profile ?? {}) };
+  if (p.hourly_rate != null) p.hourly_rate = String(Number(p.hourly_rate)).replace(".", ",");
   const ok = connectors.filter((c) => c.status === "verbunden").length;
   const icsUrl = `${FUNCTION_URL}/ics/${p.ics_token ?? ""}.ics`;
 
@@ -250,8 +253,9 @@ async function settingsView(ctx) {
         <section class="group"><h2 class="group-header small">Profil</h2><ul class="list form-list">
           ${field("user_name", "Name", "text", 'autocomplete="name"')}
           ${field("company_name", "Firma", "text", 'autocomplete="organization"')}
+          ${field("hourly_rate", "Stundensatz", "text", 'inputmode="decimal" placeholder="z. B. 95"')}
           <li><div class="field stacked"><label for="s-sig">E-Mail-Signatur</label><textarea id="s-sig" name="email_signature" rows="4" placeholder="Mit freundlichen Grüßen&#10;Name&#10;Firma · Telefon">${esc(p.email_signature ?? "")}</textarea></div></li>
-        </ul><p class="group-footer">Name und Firma verwendet der Assistent in E-Mails und Anfragen.</p></section>
+        </ul><p class="group-footer">Name und Firma verwendet der Assistent in E-Mails und Anfragen. Der Stundensatz (netto, €) bewertet die Zeiterfassung.</p></section>
 
         <section class="group"><h2 class="group-header small">Benachrichtigungen</h2><ul class="list form-list">
           ${field("whatsapp_number", "WhatsApp-Nummer", "tel", 'placeholder="43664…" inputmode="tel"')}
@@ -265,7 +269,9 @@ async function settingsView(ctx) {
       <section class="group"><ul class="list with-icons">
         <li><a class="cell" href="#/einstellungen/konnektoren"><span class="cell-icon" style="--tint:var(--system-indigo)">${icon("plug")}</span>
           <span class="cell-text"><span class="cell-title">Konnektoren</span></span><span class="cell-detail">${ok} verbunden</span><span class="chevron">${icon("chevronRight")}</span></a></li>
-      </ul><p class="group-footer">Claude, WhatsApp, Gmail & Kalender, Higgsfield, Blender, SketchUp, AutoCAD und weitere MCP-Server.</p></section>
+        <li><a class="cell" href="#/einstellungen/vorlagen"><span class="cell-icon" style="--tint:var(--system-orange)">${icon("template")}</span>
+          <span class="cell-text"><span class="cell-title">Projektvorlagen</span></span><span class="cell-detail">${templates.length + 3}</span><span class="chevron">${icon("chevronRight")}</span></a></li>
+      </ul><p class="group-footer">Konnektoren: Claude, WhatsApp, Gmail & Kalender, Higgsfield, Blender, SketchUp, AutoCAD und weitere MCP-Server. Vorlagen: eigene Phasenpläne für neue Projekte.</p></section>
 
       <section class="group"><h2 class="group-header small">Kalender-Abo</h2><ul class="list with-icons">
         <li><a class="cell" href="${esc(icsUrl.replace("https://", "webcal://"))}"><span class="cell-icon" style="--tint:var(--system-red)">${icon("calendar")}</span>
@@ -284,7 +290,11 @@ async function settingsView(ctx) {
   const form = ctx.root.querySelector("[data-profile]");
   form.addEventListener("change", async (e) => {
     const el = e.target;
-    const value = el.type === "checkbox" ? el.checked : el.value.trim() || null;
+    let value = el.type === "checkbox" ? el.checked : el.value.trim() || null;
+    if (el.name === "hourly_rate" && value != null) {
+      value = parseNumber(value);
+      if (Number.isNaN(value)) return errorToast(new Error("Bitte einen Betrag eingeben, z. B. 95"));
+    }
     const patch = { [el.name]: el.name === "whatsapp_number" && value ? String(value).replace(/\D/g, "") : value };
     try {
       await q(db.from("profiles").update(patch).eq("owner_id", currentUser.id));
@@ -301,7 +311,57 @@ async function settingsView(ctx) {
   });
 }
 
+// ---------------------------------------------------------------- Projektvorlagen
+
+function phaseList(t) {
+  return `<ol class="template-phases">${(t?.phases ?? []).map((ph) => `<li><b>${esc(ph.title)}</b>${ph.tasks?.length ? `<br><span class="secondary t-footnote">${ph.tasks.map(esc).join(" · ")}</span>` : ""}</li>`).join("")}</ol>`;
+}
+
+async function templatesView(ctx) {
+  const own = await q(db.from("project_templates").select("*").order("name"));
+  ctx.root.innerHTML = `
+    ${header({ title: "Projektvorlagen", back: { href: "#/einstellungen", label: "Einstellungen" } })}
+    <div class="page narrow">
+      <section class="group"><h2 class="group-header small">Mitgeliefert</h2><ul class="list">
+        ${BUILTIN.map((t, i) => `<li><button class="cell" data-builtin="${i}"><span class="cell-text"><span class="cell-title">${esc(t.name)}</span>
+          <span class="cell-sub">${t.template ? `${t.template.phases.length} Phasen` : "Naturmaß bis Abnahme"}</span></span><span class="chevron">${icon("chevronRight")}</span></button></li>`).join("")}
+      </ul></section>
+      <section class="group"><h2 class="group-header small">Eigene Vorlagen</h2>
+        ${own.length ? `<ul class="list">${own.map((t) => `<li><button class="cell" data-own="${t.id}"><span class="cell-text"><span class="cell-title">${esc(t.name)}</span>
+          <span class="cell-sub">${t.template?.phases?.length ?? 0} Phasen · ${(t.template?.phases ?? []).reduce((s, p) => s + (p.tasks?.length ?? 0), 0)} Aufgaben</span></span><span class="chevron">${icon("chevronRight")}</span></button></li>`).join("")}</ul>`
+          : empty({ icon: "template", title: "Noch keine eigenen Vorlagen", text: "Passe in einem Projekt die Phasen an (Fahrplan → Bearbeiten) und wähle dann im Projekt-Menü „Als Vorlage sichern“." })}
+        <p class="group-footer">Beim Anlegen eines Projekts wählst du die Vorlage. Termine werden aus Start- und Umzugsdatum automatisch verteilt.</p>
+      </section>
+    </div>`;
+  ctx.root.addEventListener("click", async (e) => {
+    try {
+      const b = e.target.closest("[data-builtin]");
+      if (b) {
+        const t = BUILTIN[Number(b.dataset.builtin)];
+        contentSheet({ title: t.name, html: t.template ? phaseList(t.template) : '<p class="secondary">Die 13 Standardphasen: Projektanlage, Naturmaß, Konzept, Planung, Trockenbau, Möblierung, Visualisierung, Ausschreibung, Angebotsvergleich, Vergabe, Terminierung, Umzug, Projektüberwachung & Abnahme – jeweils mit Aufgaben.</p>' });
+        return;
+      }
+      const o = e.target.closest("[data-own]");
+      if (!o) return;
+      const t = own.find((x) => x.id === o.dataset.own);
+      const choice = await actionSheet({ title: t.name, actions: [
+        { label: "Phasen ansehen", value: "show" }, { label: "Umbenennen", value: "rename" }, { label: "Löschen", value: "delete", destructive: true },
+      ] });
+      if (choice === "show") contentSheet({ title: t.name, html: phaseList(t.template) });
+      if (choice === "rename" && await formSheet({
+        title: "Vorlage umbenennen", values: { name: t.name }, sections: [{ fields: [{ name: "name", label: "Name", required: true }] }],
+        onSubmit: (v) => q(db.from("project_templates").update({ name: v.name }).eq("id", t.id)).then(() => true),
+      })) ctx.rerender();
+      if (choice === "delete" && await confirmDialog({ title: `„${t.name}“ löschen?`, message: "Bestehende Projekte bleiben unverändert.", confirm: "Löschen", destructive: true })) {
+        await q(db.from("project_templates").delete().eq("id", t.id));
+        ctx.rerender();
+      }
+    } catch (err) { errorToast(err); }
+  });
+}
+
 export default function (ctx) {
+  if (ctx.mode === "templates") return templatesView(ctx);
   return ctx.mode === "connectors" ? connectorsView(ctx) : settingsView(ctx);
 }
 

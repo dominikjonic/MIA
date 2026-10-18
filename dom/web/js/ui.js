@@ -100,7 +100,7 @@ export const loading = () => `<div class="center-load"><div class="spinner" role
 export function header({ title, subtitle = "", back = null, actions = "", largeExtra = "" }) {
   return `
   <header class="navbar">
-    <div class="nav-leading">${back ? `<a class="nav-back" href="${back.href}">${icon("chevronLeft")}<span>${esc(back.label.length > 22 ? "Zurück" : back.label)}</span></a>` : '<a class="nav-logo" href="#/heute" aria-label="DOM – Heute"><img class="logo" src="icons/logo.png" alt=""></a>'}</div>
+    <div class="nav-leading">${back ? `<a class="nav-back" href="${back.href}">${icon("chevronLeft")}<span>${esc(back.label.length > 22 ? "Zurück" : back.label)}</span></a>` : '<a class="nav-logo" href="#/heute" aria-label="DOM – Heute"><img class="logo" src="icons/logo-glass.png" alt=""></a>'}</div>
     <div class="nav-title" aria-hidden="true">${esc(title)}</div>
     <div class="nav-actions">${actions}</div>
   </header>

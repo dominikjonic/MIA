@@ -1,6 +1,6 @@
 // Minimaler Service Worker: App-Hülle offline verfügbar, Daten immer frisch aus dem Netz.
-const CACHE = "dom-v1";
-const SHELL = ["./", "index.html", "css/tokens.css", "css/app.css", "vendor/supabase.js", "js/app.js", "js/ui.js", "js/icons.js", "js/supa.js", "js/config.js"];
+const CACHE = "dom-v2";
+const SHELL = ["./", "index.html", "css/tokens.css", "css/app.css", "vendor/supabase.js", "js/app.js", "js/ui.js", "js/icons.js", "js/supa.js", "js/config.js", "icons/logo-glass.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

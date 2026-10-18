@@ -1,23 +1,27 @@
 // Heute: Was steht an? Termine, fällige und überfällige Aufgaben, Budget-Hinweise, Projektstand.
 import { db, q } from "../supa.js";
 import { icon } from "../icons.js";
-import { actionSheet, budgetPill, empty, errorToast, esc, eur, fmtDate, schedulePill, fmtDateLong, fmtTime, header, isoDate, navButton, ring } from "../ui.js";
+import { actionSheet, budgetPill, empty, errorToast, esc, eur, fmtDate, schedulePill, fmtDateLong, fmtTime, header, isoDate, navButton, ring, toast } from "../ui.js";
 import { bindTasks, newProject, taskRow, taskSheet } from "./projects.js";
 import { appointmentSheet, KIND } from "./appointments.js";
 import { weekStrip } from "./calendar.js";
+import { clock, hours, startTimer, stopTimers } from "./time.js";
 
 export default async function today(ctx) {
   const day = isoDate();
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(); end.setHours(23, 59, 59, 999);
-  const [tasks, appts, projects, profile, waConnector, week] = await Promise.all([
+  const [tasks, appts, projects, profile, waConnector, week, running, lateDefects] = await Promise.all([
     q(db.from("tasks").select("*, projects(name, status)").eq("done", false).lte("due_date", day).order("due_date").order("position").limit(60)),
     q(db.from("appointments").select("*, projects(name)").gte("starts_at", start.toISOString()).lte("starts_at", end.toISOString()).order("starts_at")),
     q(db.from("v_project_status").select("*").eq("status", "aktiv").order("move_date", { nullsFirst: false })),
     q(db.from("profiles").select("user_name").maybeSingle()),
     q(db.from("connectors").select("id").eq("kind", "whatsapp").limit(1)),
     weekStrip().catch(() => ""),
+    q(db.from("time_entries").select("id, project_id, started_at, projects(name)").not("started_at", "is", null).limit(1)),
+    q(db.from("defects").select("id, title, due_date, project_id, projects(name), contacts(company, name)").eq("status", "offen").lt("due_date", day).order("due_date").limit(20)),
   ]);
+  const timer = running[0];
   const active = tasks.filter((t) => !t.projects || t.projects.status === "aktiv");
   const overdue = active.filter((t) => t.due_date < day);
   const due = active.filter((t) => t.due_date === day);
@@ -29,6 +33,11 @@ export default async function today(ctx) {
     ${header({ title: "Heute", subtitle: `${fmtDateLong(day)} · ${greet}${profile?.user_name ? `, ${esc(profile.user_name)}` : ""}`,
       actions: `<a class="icon-btn" href="#/einstellungen" aria-label="Einstellungen">${icon("settings")}</a>${navButton("add", "plus", "Neu")}` })}
     <div class="page">
+      ${timer ? `<div class="card timer-card compact mb-24">
+        <span class="cell-icon" style="--tint:var(--system-orange)">${icon("timer")}</span>
+        <a class="cell-text" href="#/projekte/${timer.project_id}/zeiten" style="color:inherit"><span class="t-headline">${esc(timer.projects?.name ?? "")}</span>
+          <span class="timer-value small" data-clock>${clock(Date.now() - new Date(timer.started_at).getTime())}</span></a>
+        <button class="btn btn-destructive small" data-action="stop-timer">${icon("stop", "sm")}Stopp</button></div>` : ""}
       ${week ? `<section class="group"><h2 class="group-header">Diese Woche<a class="btn btn-plain" href="#/termine">Kalender</a></h2>${week}</section>` : ""}
       <div class="grid cols-3 mb-24">
         <div class="card metric"><span class="label">${icon("calendar", "sm")}Termine heute</span><span class="value">${appts.length}</span></div>
@@ -54,6 +63,11 @@ export default async function today(ctx) {
       ${overdue.length ? `<section class="group"><h2 class="group-header">Überfällig</h2>
         <ul class="list">${overdue.map((t) => taskRow(t, { showProject: true })).join("")}</ul></section>` : ""}
 
+      ${lateDefects.length ? `<section class="group"><h2 class="group-header">Mängel überfällig</h2><ul class="list with-icons">${lateDefects.map((d) => `
+        <li><a class="cell" href="#/projekte/${d.project_id}/maengel"><span class="cell-icon" style="--tint:var(--system-red)">${icon("wrench")}</span>
+          <span class="cell-text"><span class="cell-title">${esc(d.title)}</span><span class="cell-sub">${esc(d.projects?.name ?? "")}${d.contacts ? ` · ${esc(d.contacts.company ?? d.contacts.name)}` : ""} · Frist ${fmtDate(d.due_date)}</span></span>
+          <span class="chevron">${icon("chevronRight")}</span></a></li>`).join("")}</ul></section>` : ""}
+
       ${warnings.length ? `<section class="group"><h2 class="group-header">Budget im Blick</h2><ul class="list with-icons">${warnings.map((p) => `
         <li><a class="cell" href="#/projekte/${p.project_id}/budget"><span class="cell-icon" style="--tint:var(--${p.budget_state === "knapp" ? "warning" : "critical"})">${icon("warning")}</span>
           <span class="cell-text"><span class="cell-title">${esc(p.name)}</span><span class="cell-sub">Prognose ${eur(p.forecast)} von ${eur(p.budget_total)}</span></span>
@@ -70,6 +84,14 @@ export default async function today(ctx) {
         <span class="chevron">${icon("chevronRight")}</span></a></section>` : ""}
     </div>`;
 
+  if (timer) {
+    const el = ctx.root.querySelector("[data-clock]");
+    const iv = setInterval(() => {
+      if (!el.isConnected) return clearInterval(iv);
+      el.textContent = clock(Date.now() - new Date(timer.started_at).getTime());
+    }, 1000);
+  }
+
   bindTasks(ctx.root, ctx.rerender);
   ctx.root.addEventListener("click", async (e) => {
     const noProj = e.target.closest("[data-noproj]");
@@ -78,11 +100,22 @@ export default async function today(ctx) {
     if (!a) return;
     try {
       if (a.dataset.action === "new-project") await newProject();
+      if (a.dataset.action === "stop-timer") {
+        const min = Math.max(1, Math.round((Date.now() - new Date(timer.started_at).getTime()) / 60000));
+        await stopTimers();
+        toast(`${hours(min)} für „${timer.projects?.name ?? ""}“ gebucht`);
+        ctx.rerender();
+      }
       if (a.dataset.action === "add-task") { if (await taskSheet()) ctx.rerender(); }
       if (a.dataset.action === "add") {
         const c = await actionSheet({ actions: [
-          { label: "Aufgabe", value: "task" }, { label: "Termin", value: "appt" }, { label: "Projekt", value: "project" },
+          { label: "Aufgabe", value: "task" }, { label: "Termin", value: "appt" }, { label: "Stoppuhr starten", value: "timer" }, { label: "Projekt", value: "project" },
         ] });
+        if (c === "timer") {
+          const pid = projects.length === 1 ? projects[0].project_id
+            : await actionSheet({ title: "Zeit erfassen für", actions: projects.map((p) => ({ label: p.name, value: p.project_id })) });
+          if (pid) { await startTimer(pid); ctx.rerender(); }
+        }
         if (c === "task" && await taskSheet()) ctx.rerender();
         if (c === "appt" && await appointmentSheet({})) ctx.rerender();
         if (c === "project") await newProject();
