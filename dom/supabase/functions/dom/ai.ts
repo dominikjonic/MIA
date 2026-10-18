@@ -132,8 +132,10 @@ export async function testClaude(owner: string) {
 
 /** Speichert einen Austausch im gemeinsamen Verlauf. */
 export async function logExchange(owner: string, channel: "app" | "whatsapp" | "system", user: string, reply: string, meta: Record<string, unknown> = {}) {
+  // Eigene Zeitstempel, damit die Frage im Verlauf sicher vor der Antwort steht
+  const now = Date.now();
   must(await admin.from("messages").insert([
-    { owner_id: owner, channel, role: "user", content: user },
-    { owner_id: owner, channel, role: "assistant", content: reply, meta },
+    { owner_id: owner, channel, role: "user", content: user, created_at: new Date(now - 1).toISOString() },
+    { owner_id: owner, channel, role: "assistant", content: reply, meta, created_at: new Date(now).toISOString() },
   ]));
 }

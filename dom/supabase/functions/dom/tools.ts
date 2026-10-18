@@ -229,7 +229,7 @@ async function findCategory(owner: string, projectId: string, name: string) {
   return rows.find((r: Json) => r.name.toLowerCase() === n) ?? rows.find((r: Json) => r.name.toLowerCase().includes(n) || n.includes(r.name.toLowerCase().split(" ")[0]));
 }
 
-const stateLabel: Record<string, string> = { im_budget: "im Budget", knapp: "knapp (über 90 %)", ueberschritten: "ÜBERSCHRITTEN", offen: "kein Budget hinterlegt" };
+const stateLabel: Record<string, string> = { im_budget: "im Budget", knapp: "knapp (Kategorie über Plan)", ueberschritten: "ÜBERSCHRITTEN", offen: "kein Budget hinterlegt" };
 
 // ---------------------------------------------------------------- Ausführung
 

@@ -101,7 +101,7 @@ svg.i.lg { width: 28px; height: 28px; }
 /* ---------------------------------------------------------------- Navigationsleiste & Large Title */
 .page { max-width: 980px; margin: 0 auto; padding: 0 var(--margin); }
 .page.narrow { max-width: var(--readable-width); }
-@media (min-width: 768px) { .page { padding: 0 32px; } }
+@media (min-width: 768px) { .page { padding: 0 32px; } .navbar { padding-inline: max(32px, calc((100% - 980px) / 2 + 32px)); } }
 
 .navbar {
   position: sticky; top: 0; z-index: 20;
@@ -118,7 +118,8 @@ svg.i.lg { width: 28px; height: 28px; }
 .nav-title { font: var(--t-headline); opacity: 0; transition: opacity var(--dur-fast) var(--ease); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50vw; }
 .navbar.scrolled .nav-title { opacity: 1; }
 .nav-actions { display: flex; justify-content: flex-end; gap: 4px; }
-.nav-back { display: inline-flex; align-items: center; gap: 2px; min-height: var(--hit); padding-right: 8px; color: var(--accent); font: var(--t-body); margin-left: -8px; }
+.nav-back { display: inline-flex; align-items: center; gap: 2px; min-height: var(--hit); padding-right: 8px; color: var(--accent); font: var(--t-body); margin-left: -8px; max-width: 100%; min-width: 0; }
+.nav-back span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-back svg.i { width: 24px; height: 24px; stroke-width: 2.2; }
 
 .large-title-wrap { padding: 2px 0 14px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
@@ -191,6 +192,8 @@ a.cell:active, button.cell:active { background: var(--fill-tertiary); }
 .chevron svg.i { width: 16px; height: 16px; stroke-width: 2.4; }
 .cell.done .cell-title { color: var(--label-secondary); text-decoration: line-through; text-decoration-color: var(--label-tertiary); }
 .cell-actions { display: flex; gap: 4px; flex: none; }
+.cell-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; background: none; border: 0; padding: 0; text-align: left; color: inherit; min-height: var(--hit); }
+.cell-main:active { opacity: .6; }
 
 /* Checkbox im Kreis (Erinnerungen-Stil) */
 .check {
@@ -217,7 +220,7 @@ details.disclosure[open] > summary .chevron svg.i { transform: rotate(90deg); }
 .grid { display: grid; gap: 12px; }
 .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 900px) { .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 899px) { .grid.cols-4, .grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 899px) { .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } .grid.cols-3 .metric { padding: 12px; min-height: 0; } .grid.cols-3 .metric .label { font: var(--t-footnote); } .grid.cols-3 .metric .label svg { display: none; } .grid.cols-3 .metric .foot { display: none; } }
 .metric { display: flex; flex-direction: column; gap: 6px; min-height: 92px; }
 .metric .label { font: var(--t-subhead); color: var(--label-secondary); display: flex; align-items: center; gap: 6px; }
 .metric .value { font: var(--t-title2); font-variant-numeric: tabular-nums; }
@@ -378,6 +381,7 @@ table.data input { width: 100%; min-width: 80px; border: 0; background: var(--fi
 .bar-row .bar-head { display: flex; justify-content: space-between; gap: 8px; font: var(--t-subhead); margin-bottom: 6px; }
 .bar-track { position: relative; height: 12px; border-radius: 6px; background: var(--fill-tertiary); }
 .bar-track .plan { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--label); border-radius: 1px; }
+.bar-track .planned { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--fill-secondary); }
 .bar-track .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--accent); }
 .bar-track .fill.invoiced { background: var(--positive); }
 .bar-track .fill.over { background: var(--critical); }
