@@ -6,7 +6,7 @@ import { errorToast, esc, loading, segmented, watchScroll } from "./ui.js";
 const NAV = [
   { key: "heute", label: "Heute", icon: "today" },
   { key: "projekte", label: "Projekte", icon: "projects" },
-  { key: "termine", label: "Termine", icon: "calendar" },
+  { key: "termine", label: "Kalender", icon: "calendar" },
   { key: "assistent", label: "Assistent", icon: "assistant" },
   { key: "kontakte", label: "Kontakte", icon: "contacts" },
 ];
@@ -23,7 +23,7 @@ const ROUTES = [
   [/^\/projekte\/([0-9a-f-]{36})\/doku$/, () => import("./views/journal.js"), "journal"],
   [/^\/projekte\/([0-9a-f-]{36})\/dateien$/, () => import("./views/journal.js"), "files"],
   [/^\/projekte\/([0-9a-f-]{36})\/umzug$/, () => import("./views/move.js")],
-  [/^\/termine$/, () => import("./views/appointments.js")],
+  [/^\/termine$/, () => import("./views/calendar.js")],
   [/^\/assistent$/, () => import("./views/assistant.js")],
   [/^\/kontakte$/, () => import("./views/contacts.js")],
   [/^\/einstellungen$/, () => import("./views/settings.js"), "settings"],
@@ -37,7 +37,7 @@ function shell() {
   appEl.innerHTML = `
     <div class="app">
       <nav class="sidebar glass" aria-label="Bereiche">
-        <div class="brand"><span class="brand-mark">D</span><span>DOM</span></div>
+        <a class="brand" href="#/heute" aria-label="DOM – Heute"><img class="logo" src="icons/logo.png" alt="DOM"></a>
         ${navLinks("")}
         <div class="spacer"></div>
         <a href="#/einstellungen" data-nav="einstellungen">${icon("settings")}<span>Einstellungen</span></a>
@@ -93,7 +93,7 @@ function loginView() {
   const draw = () => {
     appEl.innerHTML = `
       <div class="login"><div class="box">
-        <div class="mark">DOM</div>
+        <img class="logo login-logo" src="icons/logo.png" alt="DOM">
         <h1 class="t-title1">${mode === "login" ? "Willkommen zurück" : "Konto erstellen"}</h1>
         <p class="lead">Büromöblierung & Umzugskoordination – Projekte, Budget, Angebote und Termine an einem Ort.</p>
         ${segmented("mode", [["login", "Anmelden"], ["signup", "Registrieren"]], mode, true)}

@@ -1,5 +1,5 @@
 // Ausschreibungen: Positionen, Bieter (Anfrage per E-Mail), Angebote, Preisspiegel und Vergabe.
-import { db, q } from "../supa.js";
+import { api, db, q, uploadFile } from "../supa.js";
 import { icon } from "../icons.js";
 import {
   actionSheet, confirmDialog, empty, errorToast, esc, eur, fmtDate, formSheet, header, isoDate, navButton, num, parseNumber, segmented, toast,
@@ -93,13 +93,13 @@ function positionSheet(tenderId, pos = null) {
   });
 }
 
-async function offerSheet({ tender, positions, contacts, offer = null, prices = [] }) {
+async function offerSheet({ tender, positions, contacts, offer = null, prices = [], prefill = null }) {
   const priceOf = (pid) => prices.find((x) => x.position_id === pid)?.unit_price;
   return formSheet({
     title: offer ? "Angebot" : "Angebot erfassen",
     confirm: offer ? "Sichern" : "Hinzufügen",
     wide: true,
-    values: offer ?? { received_date: isoDate(), discount_pct: 0, extra_costs: 0 },
+    values: offer ?? prefill ?? { received_date: isoDate(), discount_pct: 0, extra_costs: 0 },
     sections: [
       { fields: [
         { name: "contact_id", label: "Bieter", type: "select", required: true, options: [["", "Bitte wählen"], ...contacts.map((c) => [c.id, c.company ?? c.name])] },
@@ -202,7 +202,7 @@ async function detail(ctx) {
   ].join("") : "";
 
   const spiegel = !positions.length ? empty({ icon: "list", title: "Keine Positionen", text: "Füge Positionen hinzu oder erstelle die Ausschreibung aus der Stückliste." })
-    : !totals.length ? empty({ icon: "compare", title: "Noch keine Angebote", text: "Erfasse eingegangene Angebote – DOM erstellt den Preisspiegel automatisch.", action: '<button class="btn btn-filled" data-action="add-offer">Angebot erfassen</button>' })
+    : !totals.length ? empty({ icon: "compare", title: "Noch keine Angebote", text: "Erfasse eingegangene Angebote – DOM erstellt den Preisspiegel automatisch.", action: '<div class="btn-row" style="justify-content:center"><button class="btn btn-filled" data-action="read-offer">Angebot aus PDF einlesen</button><button class="btn btn-gray" data-action="add-offer">Manuell erfassen</button></div>' })
     : `
       <div class="card mb-16 t-subhead">${icon("sparkle", "sm")} ${recommendation}</div>
       <div class="table-wrap mb-16"><table class="data">
@@ -222,7 +222,7 @@ async function detail(ctx) {
           <tr><td colspan="2"></td>${totals.map((o) => `<td class="r"><button class="btn btn-plain small" data-offer="${o.offer_id}">Bearbeiten</button>
             ${t.status !== "vergeben" ? `<br><button class="btn btn-tinted small" data-award="${o.offer_id}">Vergeben</button>` : o.status === "vergeben" ? '<br><span class="pill positive">Vergeben</span>' : ""}</td>`).join("")}</tr>
         </tfoot></table></div>
-      <div class="row no-print"><button class="btn btn-gray small" data-action="add-offer">${icon("plus", "sm")}Angebot erfassen</button><button class="btn btn-gray small" data-action="print">${icon("print", "sm")}Preisspiegel drucken</button></div>`;
+      <div class="row no-print"><button class="btn btn-tinted small" data-action="read-offer">${icon("sparkle", "sm")}Angebot aus PDF einlesen</button><button class="btn btn-gray small" data-action="add-offer">${icon("plus", "sm")}Angebot erfassen</button><button class="btn btn-gray small" data-action="print">${icon("print", "sm")}Preisspiegel drucken</button></div>`;
 
   const posTab = `
     <section class="group"><ul class="list">${positions.map((pos, i) => `<li><button class="cell" data-pos="${pos.id}">
@@ -305,9 +305,41 @@ async function detail(ctx) {
       if (act === "add-pos" && await positionSheet(tenderId)) ctx.rerender();
       if (act === "add-bidder" && await bidderSheet(tenderId, bidders.map((b) => b.contact_id))) ctx.rerender();
       if (act === "add-offer" && await offerSheet({ tender: t, positions, contacts: offerContacts.length ? offerContacts : allContacts })) ctx.rerender();
+      if (act === "read-offer") readOfferFromFile();
       if (act === "print") window.print();
     } catch (err) { errorToast(err); }
   });
+
+  /** Angebot (PDF/Foto) hochladen → KI ordnet Preise den Positionen zu → vorausgefülltes Formular zum Prüfen. */
+  function readOfferFromFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf,image/*";
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      try {
+        toast("Angebot wird gelesen – das dauert etwa 20 Sekunden …", { duration: 20000 });
+        const stored = await uploadFile(file, { projectId, kind: "angebot", caption: `Angebot ${t.title}` });
+        const r = await api("/extract", { kind: "offer", file_id: stored.id, tender_id: tenderId });
+        let contact = allContacts.find((c) => (c.company ?? "").toLowerCase() === r.bidder_company.toLowerCase())
+          ?? allContacts.find((c) => c.company && r.bidder_company.toLowerCase().includes(c.company.toLowerCase().split(" ")[0]));
+        if (!contact) {
+          contact = await q(db.from("contacts").insert({ kind: "lieferant", company: r.bidder_company, email: r.bidder_email }).select("id, company, name, email").single());
+          allContacts.push(contact);
+        }
+        if (!bidders.some((b) => b.contact_id === contact.id)) await q(db.from("tender_bidders").insert({ tender_id: tenderId, contact_id: contact.id }));
+        toast(`${r.prices.length} von ${positions.length} Positionen erkannt – bitte prüfen`, { duration: 6000 });
+        const saved = await offerSheet({
+          tender: t, positions, contacts: allContacts, prices: r.prices,
+          prefill: { contact_id: contact.id, received_date: isoDate(), valid_until: r.valid_until, delivery_weeks: r.delivery_weeks, discount_pct: r.discount_pct, extra_costs: r.extra_costs, notes: r.notes },
+        });
+        ctx.rerender();
+        if (saved) toast("Angebot übernommen – Preisspiegel aktualisiert");
+      } catch (err) { errorToast(err); }
+    };
+    input.click();
+  }
 
   async function composeMail(kind, contactId, data) {
     const c = allContacts.find((x) => x.id === contactId) ?? bidderContacts.find((x) => x.id === contactId);

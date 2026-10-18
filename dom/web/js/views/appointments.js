@@ -21,13 +21,13 @@ async function googleConnected() {
   return rows[0]?.status === "verbunden";
 }
 
-export async function appointmentSheet({ appt = null, projectId = null, kind = "termin" }) {
+export async function appointmentSheet({ appt = null, projectId = null, kind = "termin", startDate = null }) {
   const [projects, google] = await Promise.all([
     projectId ? [] : q(db.from("projects").select("id, name, address").eq("status", "aktiv").order("name")),
     googleConnected(),
   ]);
   const duration = appt?.ends_at ? Math.round((new Date(appt.ends_at) - new Date(appt.starts_at)) / 60000) : 60;
-  const tomorrow9 = `${addDays(isoDate(), 1)}T09:00`;
+  const tomorrow9 = `${startDate && startDate >= isoDate() ? startDate : addDays(isoDate(), 1)}T09:00`;
   return formSheet({
     title: appt ? "Termin" : "Neuer Termin",
     confirm: appt ? "Sichern" : "Hinzufügen",

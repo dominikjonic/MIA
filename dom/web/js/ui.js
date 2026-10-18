@@ -69,6 +69,22 @@ export const BUDGET_STATE = {
   ueberschritten: { label: "Überschritten", tone: "critical", icon: "warning" },
   offen: { label: "Kein Budget", tone: "", icon: "info" },
 };
+/** Zeitplan-Ampel eines Projekts: rot = Phase überzogen oder ≥ 3 Aufgaben überfällig, gelb = etwas überfällig oder Phasenende in ≤ 3 Tagen. */
+export function scheduleState(p) {
+  if (p.status && p.status !== "aktiv") return null;
+  const today = isoDate();
+  if ((p.current_phase_due && p.current_phase_due < today) || p.overdue >= 3) return "rot";
+  if (p.overdue > 0 || (p.current_phase_due && p.current_phase_due <= addDays(today, 3))) return "gelb";
+  return "gruen";
+}
+const SCHEDULE = { rot: ["Zeitverzug", "critical", "warning"], gelb: ["Achtung", "warning", "clock"], gruen: ["Im Zeitplan", "positive", "check"] };
+export function schedulePill(p) {
+  const st = scheduleState(p);
+  if (!st) return "";
+  const [label, tone, ic] = SCHEDULE[st];
+  return `<span class="pill ${tone}">${icon(ic)}${label}</span>`;
+}
+
 export function budgetPill(state) {
   const s = BUDGET_STATE[state] ?? BUDGET_STATE.offen;
   return `<span class="pill ${s.tone}">${icon(s.icon)}${s.label}</span>`;
@@ -84,7 +100,7 @@ export const loading = () => `<div class="center-load"><div class="spinner" role
 export function header({ title, subtitle = "", back = null, actions = "", largeExtra = "" }) {
   return `
   <header class="navbar">
-    <div class="nav-leading">${back ? `<a class="nav-back" href="${back.href}">${icon("chevronLeft")}<span>${esc(back.label.length > 22 ? "Zurück" : back.label)}</span></a>` : ""}</div>
+    <div class="nav-leading">${back ? `<a class="nav-back" href="${back.href}">${icon("chevronLeft")}<span>${esc(back.label.length > 22 ? "Zurück" : back.label)}</span></a>` : '<a class="nav-logo" href="#/heute" aria-label="DOM – Heute"><img class="logo" src="icons/logo.png" alt=""></a>'}</div>
     <div class="nav-title" aria-hidden="true">${esc(title)}</div>
     <div class="nav-actions">${actions}</div>
   </header>

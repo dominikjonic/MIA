@@ -1,20 +1,22 @@
 // Heute: Was steht an? Termine, fällige und überfällige Aufgaben, Budget-Hinweise, Projektstand.
 import { db, q } from "../supa.js";
 import { icon } from "../icons.js";
-import { actionSheet, budgetPill, empty, errorToast, esc, eur, fmtDate, fmtDateLong, fmtTime, header, isoDate, navButton, ring } from "../ui.js";
+import { actionSheet, budgetPill, empty, errorToast, esc, eur, fmtDate, schedulePill, fmtDateLong, fmtTime, header, isoDate, navButton, ring } from "../ui.js";
 import { bindTasks, newProject, taskRow, taskSheet } from "./projects.js";
 import { appointmentSheet, KIND } from "./appointments.js";
+import { weekStrip } from "./calendar.js";
 
 export default async function today(ctx) {
   const day = isoDate();
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end = new Date(); end.setHours(23, 59, 59, 999);
-  const [tasks, appts, projects, profile, waConnector] = await Promise.all([
+  const [tasks, appts, projects, profile, waConnector, week] = await Promise.all([
     q(db.from("tasks").select("*, projects(name, status)").eq("done", false).lte("due_date", day).order("due_date").order("position").limit(60)),
     q(db.from("appointments").select("*, projects(name)").gte("starts_at", start.toISOString()).lte("starts_at", end.toISOString()).order("starts_at")),
     q(db.from("v_project_status").select("*").eq("status", "aktiv").order("move_date", { nullsFirst: false })),
     q(db.from("profiles").select("user_name").maybeSingle()),
     q(db.from("connectors").select("id").eq("kind", "whatsapp").limit(1)),
+    weekStrip().catch(() => ""),
   ]);
   const active = tasks.filter((t) => !t.projects || t.projects.status === "aktiv");
   const overdue = active.filter((t) => t.due_date < day);
@@ -27,6 +29,7 @@ export default async function today(ctx) {
     ${header({ title: "Heute", subtitle: `${fmtDateLong(day)} · ${greet}${profile?.user_name ? `, ${esc(profile.user_name)}` : ""}`,
       actions: `<a class="icon-btn" href="#/einstellungen" aria-label="Einstellungen">${icon("settings")}</a>${navButton("add", "plus", "Neu")}` })}
     <div class="page">
+      ${week ? `<section class="group"><h2 class="group-header">Diese Woche<a class="btn btn-plain" href="#/termine">Kalender</a></h2>${week}</section>` : ""}
       <div class="grid cols-3 mb-24">
         <div class="card metric"><span class="label">${icon("calendar", "sm")}Termine heute</span><span class="value">${appts.length}</span></div>
         <div class="card metric"><span class="label">${icon("check", "sm")}Heute fällig</span><span class="value">${due.length}</span></div>
@@ -59,7 +62,7 @@ export default async function today(ctx) {
       ${projects.length ? `<section class="group"><h2 class="group-header">Projekte</h2><ul class="list">${projects.map((p) => `
         <li><a class="cell" href="#/projekte/${p.project_id}">${ring(p.progress_pct, 40)}
           <span class="cell-text"><span class="cell-title">${esc(p.name)}</span><span class="cell-sub">${esc(p.current_phase ?? "Abgeschlossen")}${p.current_phase_due ? ` · bis ${fmtDate(p.current_phase_due)}` : ""}</span></span>
-          <span class="chevron">${icon("chevronRight")}</span></a></li>`).join("")}</ul></section>` : ""}
+          ${schedulePill(p)}<span class="chevron">${icon("chevronRight")}</span></a></li>`).join("")}</ul></section>` : ""}
 
       ${projects.length && !waConnector.length ? `<section class="group"><a class="card row" href="#/einstellungen/konnektoren" style="color:inherit">
         <span class="cell-icon" style="--tint:var(--system-green)">${icon("whatsapp")}</span>

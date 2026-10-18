@@ -3,7 +3,7 @@ import { db, q } from "../supa.js";
 import { icon } from "../icons.js";
 import {
   actionSheet, budgetPill, confirmDialog, empty, errorToast, esc, eur, fmtDate, formSheet, header, isoDate,
-  navButton, progress, relDay, ring, segmented, toast,
+  navButton, progress, relDay, ring, schedulePill, segmented, toast,
 } from "../ui.js";
 
 // ---------------------------------------------------------------- Projekt anlegen / bearbeiten
@@ -92,7 +92,7 @@ async function list(ctx) {
           <span class="cell-text">
             <span class="cell-title t-headline">${esc(p.name)}</span>
             <span class="cell-sub">${esc(p.current_phase ?? "Alle Phasen erledigt")}${p.move_date ? ` · Umzug ${fmtDate(p.move_date)}` : ""}</span>
-            <span class="row" style="margin-top:4px">${budgetPill(p.budget_state)}${p.overdue > 0 ? `<span class="pill critical">${icon("clock")}${p.overdue} überfällig</span>` : ""}${p.status !== "aktiv" ? `<span class="pill">${esc(p.status)}</span>` : ""}</span>
+            <span class="row" style="margin-top:4px">${schedulePill(p)}${budgetPill(p.budget_state)}${p.overdue > 0 ? `<span class="pill critical">${icon("clock")}${p.overdue} überfällig</span>` : ""}${p.status !== "aktiv" ? `<span class="pill">${esc(p.status)}</span>` : ""}</span>
           </span>
           <span class="chevron">${icon("chevronRight")}</span></a></li>`).join("")}</ul>`
         : empty({ icon: "projects", title: filter === "aktiv" ? "Keine aktiven Projekte" : "Noch keine Projekte",
@@ -234,7 +234,7 @@ async function detail(ctx) {
       <div class="grid cols-4 mb-24">
         <div class="card metric"><span class="label">Fortschritt</span>
           <span class="row">${ring(s.progress_pct, 44)}<span class="t-subhead secondary">${s.tasks_done} von ${s.tasks_total}<br>Aufgaben</span></span></div>
-        <div class="card metric"><span class="label">Aktuelle Phase</span><span class="t-headline">${esc(s.current_phase ?? "Abgeschlossen")}</span>
+        <div class="card metric"><span class="label">Aktuelle Phase ${schedulePill({ ...s, status: p.status })}</span><span class="t-headline">${esc(s.current_phase ?? "Abgeschlossen")}</span>
           <span class="foot">${s.current_phase_due ? `bis ${fmtDate(s.current_phase_due)}` : ""}${s.overdue ? ` · <span class="critical">${s.overdue} überfällig</span>` : ""}</span></div>
         <div class="card metric"><span class="label">Umzug</span><span class="value">${p.move_date ? fmtDate(p.move_date, { day: "numeric", month: "short" }) : "–"}</span>
           <span class="foot">${daysToMove == null ? "Noch kein Termin" : daysToMove > 0 ? `in ${daysToMove} Tagen` : daysToMove === 0 ? "heute" : "vorbei"}</span></div>
@@ -299,10 +299,12 @@ async function detail(ctx) {
         const choice = await actionSheet({ title: p.name, actions: [
           { label: "Bearbeiten", value: "edit" },
           { label: p.status === "aktiv" ? "Pausieren" : "Aktivieren", value: "toggle" },
+          { label: "Statusbericht an Kunden", value: "report" },
           { label: "Als abgeschlossen markieren", value: "done" },
         ] });
         if (choice === "edit") { if (await projectSheet(p)) ctx.rerender(); }
         if (choice === "toggle") { await q(db.from("projects").update({ status: p.status === "aktiv" ? "pausiert" : "aktiv" }).eq("id", id)); ctx.rerender(); }
+        if (choice === "report") await statusReport(p, s, phases, tasks, client);
         if (choice === "done") {
           if (await confirmDialog({ title: "Projekt abschließen?", message: "Es erscheint dann nicht mehr in „Heute“ und im Briefing.", confirm: "Abschließen" })) {
             await q(db.from("projects").update({ status: "abgeschlossen" }).eq("id", id));
@@ -316,6 +318,27 @@ async function detail(ctx) {
   ctx.root.querySelectorAll("details[data-phase]").forEach((d) => d.addEventListener("toggle", () => {
     if (d.open) history.replaceState(null, "", `#/projekte/${id}?phase=${d.dataset.phase}`);
   }));
+}
+
+/** Statusbericht für den Kunden: KI fasst Fortschritt, Doku und nächste Schritte zusammen → Gmail-Entwurf. */
+async function statusReport(p, s, phases, tasks, client) {
+  const [logs, appts, clientRow] = await Promise.all([
+    q(db.from("logs").select("entry_date, text").eq("project_id", p.id).gte("entry_date", isoDate(new Date(Date.now() - 14 * 86400000))).order("entry_date")),
+    q(db.from("appointments").select("title, starts_at").eq("project_id", p.id).gte("starts_at", new Date().toISOString()).order("starts_at").limit(5)),
+    p.client_id ? q(db.from("contacts").select("email, name").eq("id", p.client_id).single()) : null,
+  ]);
+  const { draftWithAI, mailSheet } = await import("./mail.js");
+  toast("Der Assistent schreibt den Statusbericht …", { duration: 3000 });
+  const done = phases.filter((x) => x.status === "erledigt").map((x) => x.title).join(", ") || "–";
+  const current = phases.find((x) => x.status !== "erledigt");
+  const next = tasks.filter((t) => !t.done && t.phase_id === current?.id).map((t) => t.title).slice(0, 5).join("; ");
+  const m = await draftWithAI(`Schreibe einen kurzen, professionellen Statusbericht an den Kunden ${client?.company ?? ""}${clientRow?.name ? ` (Ansprechperson ${clientRow.name})` : ""} zum Projekt „${p.name}“.
+Gesamtfortschritt ${s.progress_pct} %. Abgeschlossene Phasen: ${done}. Aktuelle Phase: ${current?.title ?? "Abschluss"}${current?.due_date ? ` (bis ${fmtDate(current.due_date)})` : ""}. Nächste Schritte: ${next || "–"}.
+Umzug/Bezug: ${p.move_date ? fmtDate(p.move_date, { day: "numeric", month: "long", year: "numeric" }) : "noch offen"}.
+Doku der letzten zwei Wochen: ${logs.map((l) => `${fmtDate(l.entry_date)}: ${l.text}`).join(" | ") || "keine Einträge"}.
+Nächste Termine: ${appts.map((a) => `${a.title} ${fmtDate(a.starts_at)}`).join("; ") || "keine"}.
+Nenne keine internen Budgetzahlen. Gliedere in: Erledigt · In Arbeit · Nächste Schritte · Termine.`);
+  await mailSheet({ to: clientRow?.email ?? "", subject: m.subject, body: m.body, title: "Statusbericht" });
 }
 
 function navRow(href, ic, tint, title, detailText) {

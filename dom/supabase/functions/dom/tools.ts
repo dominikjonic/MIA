@@ -272,6 +272,18 @@ export async function runTool(owner: string, name: string, input: Json): Promise
       out.push(due.length ? "Fällig:\n" + due.map((t: Json) => `• ${t.title} – ${t.projects?.name ?? "ohne Projekt"} [id ${t.id}]`).join("\n") : "Keine Aufgaben fällig.");
       if (overdue.length) out.push(`Überfällig (${overdue.length}):\n` + overdue.slice(0, 15).map((t: Json) => `• ${t.title} – ${t.projects?.name ?? ""}, seit ${dateDE(t.due_date, tz)} [id ${t.id}]`).join("\n"));
       if (rem.length) out.push("Erinnerungen:\n" + rem.map((r: Json) => `• ${timeDE(r.remind_at, tz)} ${r.text}`).join("\n"));
+      // Fristen: Angebotsfristen (heute oder abgelaufen ohne Vergabe), Phasenenden, Umzüge
+      const [tenders, phasesDue, moves] = await Promise.all([
+        admin.from("tenders").select("title, deadline, status, projects(name), offers(id)").eq("owner_id", owner).neq("status", "vergeben").lte("deadline", day),
+        admin.from("phases").select("title, due_date, projects(name, status)").eq("owner_id", owner).neq("status", "erledigt").eq("due_date", day),
+        admin.from("projects").select("name, move_date").eq("owner_id", owner).eq("status", "aktiv").eq("move_date", day),
+      ]);
+      const fristen = [
+        ...must(tenders).map((t: Json) => `• Angebotsfrist „${t.title}“ (${t.projects?.name ?? ""})${t.deadline < day ? ` – abgelaufen seit ${dateDE(t.deadline, tz)}` : " – heute"}, ${t.offers?.length ?? 0} Angebote`),
+        ...must(phasesDue).filter((p: Json) => p.projects?.status === "aktiv").map((p: Json) => `• Phasenende „${p.title}“ (${p.projects.name})`),
+        ...must(moves).map((p: Json) => `• UMZUG heute: ${p.name}`),
+      ];
+      if (fristen.length) out.push("Fristen:\n" + fristen.join("\n"));
       return out.join("\n\n");
     }
 

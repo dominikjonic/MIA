@@ -1,10 +1,12 @@
 // DOM – Server-Funktion. Ein Einstiegspunkt mit Routen:
-//   App (Bearer-Login):  /assistant, /compose, /connectors/*, /google/*, /visualize, /whatsapp/test
-//   Öffentlich:          /whatsapp/webhook, /google/callback, /tick (Cron-Geheimnis), /bridge/* (Brücken-Token)
+//   App (Bearer-Login):  /assistant, /compose, /extract, /connectors/*, /google/*, /visualize, /whatsapp/test
+//   Öffentlich:          /whatsapp/webhook, /google/callback, /ics/<token> (Kalender-Abo), /tick (Cron-Geheimnis), /bridge/* (Brücken-Token)
 import { SUPABASE_URL, admin, getProfile, internalSetting, must, userFromRequest } from "./db.ts";
 import { AIUnavailable, askAssistant, compose, logExchange, testClaude } from "./ai.ts";
 import { getConnector, getSecrets, saveConnector, setStatus } from "./connectors.ts";
-import { authUrl, createDraft, handleCallback, sendMail, testGoogle, upsertCalendarEvent } from "./google.ts";
+import { authUrl, createDraft, handleCallback, sendMail, testGoogle, todaysCalendar, upsertCalendarEvent } from "./google.ts";
+import { extractInvoice, extractOffer } from "./extract.ts";
+import { icsFeed } from "./ics.ts";
 import { parseWebhook, sendWhatsApp, storeInboundMedia, testWhatsApp, verifyWebhook } from "./whatsapp.ts";
 import { startVisualization, testHiggsfield } from "./higgsfield.ts";
 import { handleBridge } from "./bridge.ts";
@@ -94,6 +96,8 @@ Deno.serve(async (req) => {
       return new Response("OK", { status: 200 });
     }
     if (path === "/google/callback") return await handleCallback(url);
+    const ics = path.match(/^\/ics\/([0-9a-f]{20,})(?:\.ics)?$/);
+    if (ics) return await icsFeed(ics[1]);
     if (path === "/tick") {
       if (req.headers.get("x-cron-secret") !== (await internalSetting("cron_secret"))) return json({ error: "Forbidden" }, 403);
       background(tick().then((r) => console.log("tick:", r)));
@@ -149,6 +153,15 @@ Deno.serve(async (req) => {
         return json(await sendMail(owner, body));
       case "/google/calendar":
         return json(await upsertCalendarEvent(owner, body.appointment_id));
+      case "/google/events": {
+        if (!(await getConnector(owner, "google"))?.secrets.refresh_token) return json({ events: [] });
+        return json({ events: await todaysCalendar(owner, body.from, body.to) });
+      }
+
+      case "/extract":
+        if (body.kind === "offer") return json(await extractOffer(owner, body.file_id, body.tender_id));
+        if (body.kind === "invoice") return json(await extractInvoice(owner, body.file_id, body.project_id));
+        return json({ error: "Unbekannte Art" }, 400);
 
       case "/visualize":
         return json(await startVisualization(owner, body.project_id, body.prompt, body.image_url));

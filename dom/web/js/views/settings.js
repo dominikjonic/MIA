@@ -1,5 +1,6 @@
 // Einstellungen (Profil, Benachrichtigungen, Konto) und Konnektoren (Claude, WhatsApp, Google, Higgsfield, CAD, MCP).
 import { api, currentUser, db, q } from "../supa.js";
+import { FUNCTION_URL } from "../config.js";
 import { icon } from "../icons.js";
 import { actionSheet, confirmDialog, contentSheet, errorToast, esc, formSheet, header, navButton, toast } from "../ui.js";
 
@@ -237,6 +238,7 @@ async function settingsView(ctx) {
   ]);
   const p = profile ?? {};
   const ok = connectors.filter((c) => c.status === "verbunden").length;
+  const icsUrl = `${FUNCTION_URL}/ics/${p.ics_token ?? ""}.ics`;
 
   const field = (name, label, type = "text", attrs = "") =>
     `<li><div class="field"><label for="s-${name}">${label}</label><input id="s-${name}" name="${name}" type="${type}" value="${esc(p[name] ?? "")}" ${attrs}></div></li>`;
@@ -265,6 +267,13 @@ async function settingsView(ctx) {
           <span class="cell-text"><span class="cell-title">Konnektoren</span></span><span class="cell-detail">${ok} verbunden</span><span class="chevron">${icon("chevronRight")}</span></a></li>
       </ul><p class="group-footer">Claude, WhatsApp, Gmail & Kalender, Higgsfield, Blender, SketchUp, AutoCAD und weitere MCP-Server.</p></section>
 
+      <section class="group"><h2 class="group-header small">Kalender-Abo</h2><ul class="list with-icons">
+        <li><a class="cell" href="${esc(icsUrl.replace("https://", "webcal://"))}"><span class="cell-icon" style="--tint:var(--system-red)">${icon("calendar")}</span>
+          <span class="cell-text"><span class="cell-title">In Kalender abonnieren</span><span class="cell-sub">Apple Kalender, Outlook</span></span><span class="chevron">${icon("chevronRight")}</span></a></li>
+        <li><button class="cell" data-action="copy-ics"><span class="cell-icon" style="--tint:var(--system-gray)">${icon("link")}</span>
+          <span class="cell-text"><span class="cell-title">Link kopieren</span><span class="cell-sub">für Google Kalender: „Per URL hinzufügen“</span></span></button></li>
+      </ul><p class="group-footer">Termine, Aufgaben-Fälligkeiten, Phasenenden, Angebotsfristen und Umzüge erscheinen automatisch in deinem Kalender und aktualisieren sich laufend. Der Link ist geheim – gib ihn nicht weiter.</p></section>
+
       <section class="group"><h2 class="group-header small">Konto</h2><ul class="list">
         <li><div class="cell"><span class="cell-text"><span class="cell-title">${esc(currentUser?.email ?? "")}</span></span></div></li>
         <li><button class="cell" data-action="logout" style="color:var(--critical)">Abmelden</button></li>
@@ -283,6 +292,10 @@ async function settingsView(ctx) {
     } catch (err) { errorToast(err); }
   });
   ctx.root.addEventListener("click", async (e) => {
+    if (e.target.closest('[data-action="copy-ics"]')) {
+      try { await navigator.clipboard.writeText(icsUrl); toast("Link kopiert"); } catch { prompt("Link zum Kopieren:", icsUrl); }
+      return;
+    }
     if (!e.target.closest('[data-action="logout"]')) return;
     if (await confirmDialog({ title: "Abmelden?", confirm: "Abmelden" })) await db.auth.signOut();
   });

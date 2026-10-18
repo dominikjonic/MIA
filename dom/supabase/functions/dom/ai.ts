@@ -24,7 +24,7 @@ export type AssistantResult = { reply: string; tools_used: string[] };
 
 export class AIUnavailable extends Error {}
 
-async function clientFor(owner: string) {
+export async function clientFor(owner: string) {
   const c = await getConnector(owner, "claude");
   if (!c?.secrets.api_key) throw new AIUnavailable("Die KI ist noch nicht eingerichtet. Trage unter Einstellungen → Konnektoren → Claude einen API-Schlüssel ein.");
   return {
@@ -135,7 +135,7 @@ export async function logExchange(owner: string, channel: "app" | "whatsapp" | "
   // Eigene Zeitstempel, damit die Frage im Verlauf sicher vor der Antwort steht
   const now = Date.now();
   must(await admin.from("messages").insert([
-    { owner_id: owner, channel, role: "user", content: user, created_at: new Date(now - 1).toISOString() },
+    { owner_id: owner, channel, role: "user", content: user, meta: {}, created_at: new Date(now - 1).toISOString() },
     { owner_id: owner, channel, role: "assistant", content: reply, meta, created_at: new Date(now).toISOString() },
   ]));
 }

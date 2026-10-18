@@ -163,7 +163,7 @@ export async function upsertCalendarEvent(owner: string, appointmentId: string) 
 
 export async function todaysCalendar(owner: string, dayStartIso: string, dayEndIso: string) {
   const res = await gapi(owner, `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(dayStartIso)}&timeMax=${encodeURIComponent(dayEndIso)}`);
-  return (res.items ?? []).map((e: any) => ({ title: e.summary, start: e.start?.dateTime ?? e.start?.date, location: e.location }));
+  return (res.items ?? []).map((e: any) => ({ title: e.summary, start: e.start?.dateTime ?? e.start?.date, end: e.end?.dateTime ?? e.end?.date, location: e.location }));
 }
 
 export async function testGoogle(owner: string) {

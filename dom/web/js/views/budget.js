@@ -1,13 +1,13 @@
 // Budgetüberwachung: Plan, beauftragt, abgerechnet, Prognose je Kategorie, Kostenbuchungen.
-import { db, q } from "../supa.js";
+import { api, db, q, uploadFile } from "../supa.js";
 import { icon } from "../icons.js";
-import { budgetPill, empty, errorToast, esc, eur, fmtDate, formSheet, header, isoDate, navButton, progress, segmented } from "../ui.js";
+import { budgetPill, empty, errorToast, esc, eur, fmtDate, formSheet, header, isoDate, navButton, progress, segmented, toast } from "../ui.js";
 
-function costSheet({ projectId, categories, cost = null }) {
+function costSheet({ projectId, categories, cost = null, prefill = null }) {
   return formSheet({
     title: cost ? (cost.kind === "rechnung" ? "Rechnung" : "Beauftragung") : "Kosten erfassen",
     confirm: cost ? "Sichern" : "Hinzufügen",
-    values: cost ?? { kind: "rechnung", cost_date: isoDate(), category_id: categories[0]?.category_id },
+    values: cost ?? prefill ?? { kind: "rechnung", cost_date: isoDate(), category_id: categories[0]?.category_id },
     sections: [
       { fields: [
         { name: "kind", label: "Art", type: "select", options: [["rechnung", "Rechnung"], ["beauftragt", "Beauftragung"]] },
@@ -69,7 +69,7 @@ export default async function budget(ctx) {
       : rest >= 0 ? `Alle Kategorien im Plan. ${eur(rest)} Spielraum.` : `Gesamtprognose ${eur(-rest)} über Budget.`;
 
   ctx.root.innerHTML = `
-    ${header({ title: "Budget", subtitle: esc(p.name), back: { href: `#/projekte/${id}`, label: p.name }, actions: navButton("add-cost", "plus", "Kosten erfassen") })}
+    ${header({ title: "Budget", subtitle: esc(p.name), back: { href: `#/projekte/${id}`, label: p.name }, actions: `${navButton("read-invoice", "sparkle", "Rechnung einlesen")}${navButton("add-cost", "plus", "Kosten erfassen")}` })}
     <div class="page">
       <div class="card mb-24 stack">
         <div class="spread"><div><div class="t-subhead secondary">Prognose</div><div class="t-title1 num">${eur(s.forecast)}</div></div>${budgetPill(s.budget_state)}</div>
@@ -116,7 +116,7 @@ export default async function budget(ctx) {
             <span class="pill ${c.kind === "rechnung" ? "positive" : "accent"}">${c.kind === "rechnung" ? "Rechnung" : "Auftrag"}</span>
             <span class="cell-text"><span class="cell-title">${esc(c.title)}</span><span class="cell-sub">${fmtDate(c.cost_date)} · ${esc(cats.find((x) => x.category_id === c.category_id)?.name ?? "ohne Kategorie")}${c.contacts ? ` · ${esc(c.contacts.company ?? c.contacts.name)}` : ""}</span></span>
             <span class="cell-detail num t-headline" style="color:var(--label)">${eur(c.amount, true)}</span></button></li>`).join("")}</ul>`
-          : empty({ icon: "euro", title: "Noch keine Buchungen", text: "Erfasse Rechnungen und Beauftragungen – oder vergib ein Angebot, dann bucht DOM es automatisch.",
+          : empty({ icon: "euro", title: "Noch keine Buchungen", text: "Lies Rechnungen als PDF oder Foto ein, erfasse sie manuell – oder vergib ein Angebot, dann bucht DOM es automatisch.",
               action: '<button class="btn btn-filled" data-action="add-cost">Kosten erfassen</button>' })}
         </section>`}
     </div>`;
@@ -131,6 +131,25 @@ export default async function budget(ctx) {
       if (costBtn && await costSheet({ projectId: id, categories: cats, cost: costs.find((c) => c.id === costBtn.dataset.cost) })) return ctx.rerender();
       const a = e.target.closest("[data-action]");
       if (a?.dataset.action === "add-cost" && await costSheet({ projectId: id, categories: cats })) ctx.rerender();
+      if (a?.dataset.action === "read-invoice") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/pdf,image/*";
+        input.onchange = async () => {
+          const file = input.files[0];
+          if (!file) return;
+          try {
+            toast("Rechnung wird gelesen …", { duration: 15000 });
+            const stored = await uploadFile(file, { projectId: id, kind: "dokument", caption: "Rechnung" });
+            const r = await api("/extract", { kind: "invoice", file_id: stored.id, project_id: id });
+            const saved = await costSheet({ projectId: id, categories: cats, prefill: {
+              kind: "rechnung", title: `${r.title} – ${r.supplier}`, amount: r.amount_net, cost_date: r.date ?? isoDate(), category_id: r.category_id,
+              notes: r.invoice_number ? `Rechnungsnr. ${r.invoice_number}` : null } });
+            if (saved) { toast("Rechnung im Budget gebucht"); ctx.rerender(); }
+          } catch (err) { errorToast(err); }
+        };
+        input.click();
+      }
       if (a?.dataset.action === "add-cat" && await categorySheet({ projectId: id })) ctx.rerender();
     } catch (err) { errorToast(err); }
   });

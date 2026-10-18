@@ -212,7 +212,7 @@
   }
 
   // ---------------------------------------------------------------- Beispieldaten
-  T.profiles.push({ owner_id: OWNER, user_name: "Dominik", company_name: "Jonić Raumplanung", email_signature: "Mit freundlichen Grüßen\nDominik Jonić", whatsapp_number: "436641234567", timezone: "Europe/Vienna", briefing_enabled: true, briefing_time: "07:30", reminder_channel: "whatsapp" });
+  T.profiles.push({ owner_id: OWNER, user_name: "Dominik", company_name: "Jonić Raumplanung", email_signature: "Mit freundlichen Grüßen\nDominik Jonić", whatsapp_number: "436641234567", timezone: "Europe/Vienna", briefing_enabled: true, briefing_time: "07:30", reminder_channel: "whatsapp", ics_token: "a1b2c3d4e5f60718293a4b5c6d7e8f90abcd" });
   const kunde = row("contacts", { kind: "kunde", company: "Kanzlei Huber & Partner", name: "Dr. Maria Huber", email: "huber@kanzlei.at", phone: "+43 732 123456", address: "Landstraße 12, 4020 Linz" });
   const kunde2 = row("contacts", { kind: "kunde", company: "Voestalpine IT-Hub", name: "Thomas Berger", email: "t.berger@example.at" });
   const tischler = row("contacts", { kind: "handwerker", company: "Tischlerei Mayr", name: "Josef Mayr", trade: "Tischler", email: "office@tischlerei-mayr.at", phone: "+43 7229 8877" });
@@ -269,6 +269,8 @@
   row("appointments", { project_id: p1.id, title: "Baustellenbesichtigung", kind: "besichtigung", starts_at: at(0, 10), ends_at: at(0, 11), location: "Hauptplatz 8, Linz", google_event_id: "x" });
   row("appointments", { project_id: p1.id, title: "Präsentation Visualisierung", kind: "praesentation", starts_at: at(0, 14, 30), ends_at: at(0, 15, 30), location: "Kanzlei Huber" });
   row("appointments", { project_id: p2.id, title: "Naturmaß Tabakfabrik", kind: "aufmass", starts_at: at(2, 9), ends_at: at(2, 12), location: "Peter-Behrens-Platz 2" });
+  row("appointments", { project_id: p2.id, title: "Telefonat IT-Hub", kind: "termin", starts_at: at(0, 10, 30), ends_at: at(0, 11) });
+  row("reminders", { project_id: p1.id, text: "Angebot Hali nachfassen", remind_at: at(1, 9) });
   row("appointments", { project_id: p1.id, title: "Liefertermin Akustikpaneele", kind: "lieferung", starts_at: at(9, 8), ends_at: at(9, 10) });
 
   row("logs", { project_id: p1.id, entry_date: d(-2), text: "Trockenbau im 3. OG fertig. Elektriker beginnt Montag mit den Bodentanks. Mangel: Türzarge Besprechungsraum verzogen – Gruber informiert.", source: "ki" });
