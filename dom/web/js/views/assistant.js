@@ -48,7 +48,7 @@ export default async function assistant(ctx) {
   const ta = form.querySelector("textarea");
   const sendBtn = form.querySelector(".send");
   const scrollDown = () => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-  scrollDown();
+  requestAnimationFrame(() => requestAnimationFrame(scrollDown));
 
   const resize = () => { ta.style.height = "auto"; ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`; sendBtn.disabled = !ta.value.trim(); };
   ta.addEventListener("input", resize);

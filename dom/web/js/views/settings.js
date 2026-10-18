@@ -2,8 +2,9 @@
 import { api, currentUser, db, q } from "../supa.js";
 import { FUNCTION_URL } from "../config.js";
 import { icon } from "../icons.js";
-import { actionSheet, confirmDialog, contentSheet, empty, errorToast, esc, formSheet, header, navButton, parseNumber, toast } from "../ui.js";
+import { actionSheet, confirmDialog, contentSheet, empty, errorToast, esc, formSheet, header, navButton, parseNumber, segmented, toast } from "../ui.js";
 import { BUILTIN } from "../templates.js";
+import { setTheme, themePreference } from "../motion.js";
 
 export async function signature() {
   const p = await q(db.from("profiles").select("email_signature").maybeSingle());
@@ -266,6 +267,10 @@ async function settingsView(ctx) {
         </ul><p class="group-footer">Deine eigene Handynummer im internationalen Format ohne + (z. B. 43664 1234567). Nur diese Nummer darf dem Assistenten schreiben. Das Briefing enthält Termine, fällige Aufgaben, Budgetwarnungen und den Stand jedes Projekts.</p></section>
       </form>
 
+      <section class="group"><h2 class="group-header small">Darstellung</h2>
+        <div class="theme-picker">${segmented("theme", [["auto", "Automatisch"], ["light", "Hell"], ["dark", "Dunkel"]], themePreference(), true)}</div>
+        <p class="group-footer">„Automatisch“ folgt der Einstellung deines Geräts – tagsüber hell, abends dunkel.</p></section>
+
       <section class="group"><ul class="list with-icons">
         <li><a class="cell" href="#/einstellungen/konnektoren"><span class="cell-icon" style="--tint:var(--system-indigo)">${icon("plug")}</span>
           <span class="cell-text"><span class="cell-title">Konnektoren</span></span><span class="cell-detail">${ok} verbunden</span><span class="chevron">${icon("chevronRight")}</span></a></li>
@@ -302,6 +307,12 @@ async function settingsView(ctx) {
     } catch (err) { errorToast(err); }
   });
   ctx.root.addEventListener("click", async (e) => {
+    const themeBtn = e.target.closest('[data-seg="theme"] button');
+    if (themeBtn) {
+      themeBtn.parentElement.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b === themeBtn)));
+      setTheme(themeBtn.dataset.value);
+      return;
+    }
     if (e.target.closest('[data-action="copy-ics"]')) {
       try { await navigator.clipboard.writeText(icsUrl); toast("Link kopiert"); } catch { prompt("Link zum Kopieren:", icsUrl); }
       return;

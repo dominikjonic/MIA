@@ -1,5 +1,6 @@
 // UI-Bausteine nach Apple HIG: Sheets, Alerts, Action Sheets, Toasts, Listenzeilen, Fortschritt, Formate.
 import { icon } from "./icons.js";
+import { animateClose, removeToast } from "./motion.js";
 
 // ---------------------------------------------------------------- Formate (de-AT)
 
@@ -54,7 +55,7 @@ export function ring(pct, size = 40, color = "var(--accent)") {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
   return `<span class="ring" style="--size:${size}px" role="img" aria-label="${p} Prozent erledigt">
     <svg viewBox="0 0 ${size} ${size}"><circle class="track" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
-    <circle class="bar" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${color}" style="stroke:${color}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}"/></svg>
+    <circle class="bar" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${color}" style="stroke:${color};--c:${c.toFixed(2)}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}"/></svg>
     <span class="pct">${p}</span></span>`;
 }
 
@@ -122,6 +123,7 @@ export function segmented(name, options, selected, full = false) {
 // ---------------------------------------------------------------- Dialog-Host
 
 function host(dialog) {
+  animateClose(dialog);
   document.body.appendChild(dialog);
   dialog.addEventListener("close", () => dialog.remove());
   dialog.showModal();
@@ -181,8 +183,8 @@ export function toast(message, { undo = null, duration = 5000 } = {}) {
   t.className = "toast glass";
   t.innerHTML = `<span>${esc(message)}</span>${undo ? '<button class="btn-plain">Rückgängig</button>' : ""}`;
   hostEl.appendChild(t);
-  const timer = setTimeout(() => t.remove(), duration);
-  if (undo) t.querySelector("button").addEventListener("click", () => { clearTimeout(timer); t.remove(); undo(); });
+  const timer = setTimeout(() => removeToast(t), duration);
+  if (undo) t.querySelector("button").addEventListener("click", () => { clearTimeout(timer); removeToast(t); undo(); });
 }
 
 export function errorToast(e) {

@@ -2,6 +2,7 @@
 import { db, q, setUser } from "./supa.js";
 import { icon } from "./icons.js";
 import { errorToast, esc, loading, segmented, watchScroll } from "./ui.js";
+import { enterView, moveIndicators } from "./motion.js";
 
 const NAV = [
   { key: "heute", label: "Heute", icon: "today" },
@@ -56,9 +57,11 @@ function setActive(section) {
     if (a.dataset.nav === section) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
+  requestAnimationFrame(moveIndicators);
 }
 
 let renderToken = 0;
+let lastPath = null;
 async function route() {
   const hash = location.hash.replace(/^#/, "") || "/heute";
   const [path, query] = hash.split("?");
@@ -68,9 +71,11 @@ async function route() {
   const match = ROUTES.find(([re]) => re.test(path));
   if (!match) { location.hash = "#/heute"; return; }
   const token = ++renderToken;
+  const isNav = path !== lastPath;
+  lastPath = path;
+  // Neue Ansicht abseits aufbauen und erst fertig einsetzen – kein Flackern beim Aktualisieren.
   const root = document.createElement("div");
-  main.replaceChildren(root);
-  root.innerHTML = loading();
+  const spinner = setTimeout(() => { if (token === renderToken) main.innerHTML = loading(); }, isNav ? 160 : 600);
   try {
     const mod = await match[1]();
     if (token !== renderToken) return;
@@ -81,11 +86,17 @@ async function route() {
     };
     await mod.default(ctx);
     if (token !== renderToken) return;
+    clearTimeout(spinner);
+    const y = window.scrollY;
+    main.replaceChildren(root);
+    if (isNav) { window.scrollTo(0, 0); enterView(root); } else window.scrollTo(0, y);
     watchScroll();
   } catch (e) {
+    clearTimeout(spinner);
     if (token !== renderToken) return;
     root.innerHTML = `<div class="page"><div class="empty">${icon("warning")}<h3>Konnte nicht geladen werden</h3><p>${esc(e.message)}</p>
       <button class="btn btn-tinted" onclick="location.reload()">Erneut versuchen</button></div></div>`;
+    main.replaceChildren(root);
     console.error(e);
   }
 }
