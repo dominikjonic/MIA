@@ -31,17 +31,18 @@ export default async function assistant(ctx) {
 
   ctx.root.innerHTML = `
     ${header({ title: "Assistent", subtitle: "Fragt, plant, erinnert und schreibt E-Mails – auch per WhatsApp." })}
-    <div class="page narrow">
+    <div class="page narrow chat-page">
       ${rows.length ? "" : `<div class="card stack mb-16"><div class="row">${icon("assistant", "lg")}<span class="t-headline">Wie kann ich helfen?</span></div>
         <div class="t-subhead secondary">Ich kenne deine Projekte, Aufgaben, Budgets, Angebote und Termine. Sag mir, was erledigt ist, frag nach dem Stand oder lass mich E-Mails formulieren.</div></div>`}
       <div class="chat" data-thread aria-live="polite">${thread}</div>
       <div class="suggestions" data-suggestions>${(preset ? [`Wie ist der Stand bei ${preset}?`, `Was ist bei ${preset} als Nächstes zu tun?`, `Budget von ${preset}`] : SUGGESTIONS)
         .map((s) => `<button>${esc(s)}</button>`).join("")}</div>
+      <form class="composer glass" data-composer>
+        <textarea rows="1" placeholder="Nachricht an den Assistenten" aria-label="Nachricht"></textarea>
+        <button class="send" type="submit" disabled aria-label="Senden">${icon("send")}</button>
+      </form>
     </div>
-    <form class="composer glass" data-composer>
-      <textarea rows="1" placeholder="Nachricht an den Assistenten" aria-label="Nachricht"></textarea>
-      <button class="send" type="submit" disabled aria-label="Senden">${icon("send")}</button>
-    </form>`;
+`;
 
   const threadEl = ctx.root.querySelector("[data-thread]");
   const form = ctx.root.querySelector("[data-composer]");

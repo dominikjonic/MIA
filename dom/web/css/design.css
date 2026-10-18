@@ -462,3 +462,29 @@ dialog.closing::backdrop { animation: fade-out 200ms var(--ease) forwards; }
 .navbar { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
 .nav-title { justify-self: center; max-width: 100%; text-align: center; }
 .navbar::after { background: linear-gradient(180deg, var(--bg-grouped) 0%, var(--bg-grouped) 45%, color-mix(in srgb, var(--bg-grouped) 60%, transparent) 75%, transparent); -webkit-mask-image: none; mask-image: none; }
+
+/* ================================================================ Logo-Marke (folgt Hell/Dunkel über die Textfarbe) */
+.logo-mark {
+  display: block; width: 36px; height: 36px; flex: none; background: var(--label);
+  -webkit-mask: url("../icons/logo-mark.png") center / contain no-repeat; mask: url("../icons/logo-mark.png") center / contain no-repeat;
+}
+.nav-logo { padding: 0; width: 44px; height: 44px; display: grid; place-items: center; }
+.nav-logo .logo-mark { width: 24px; height: 24px; }
+@media (min-width: 768px) {
+  .sidebar .brand { display: flex; justify-content: center; padding: 8px 0 24px; }
+  .sidebar .brand .logo-mark { width: 44px; height: 44px; transition: transform var(--dur) var(--ease-spring); }
+  .sidebar .brand:hover .logo-mark { transform: scale(1.06); }
+}
+.login .login-logo { width: 84px; height: 84px; margin: 0 auto 26px; border-radius: 0; filter: none; }
+
+/* ================================================================ Assistent: Eingabe klebt unten in der Inhaltsspalte */
+.chat { padding-bottom: 8px; }
+.suggestions { margin: 14px 0 12px; }
+.composer {
+  position: sticky; left: auto; right: auto; max-width: none; margin: 0;
+  bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) { .composer { bottom: 20px; left: auto; } }
+.chat-page { padding-bottom: 24px; }
+@media (max-width: 767px) { .chat-page { padding-bottom: calc(var(--tabbar-h) + 30px); } }
+.suggestions button { text-align: left; }

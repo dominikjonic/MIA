@@ -42,7 +42,7 @@ function shell() {
   appEl.innerHTML = `
     <div class="app">
       <nav class="sidebar glass" aria-label="Bereiche">
-        <a class="brand" href="#/heute" aria-label="DOM – Heute"><img class="logo" src="icons/logo-glass.png" alt="DOM"></a>
+        <a class="brand" href="#/heute" aria-label="DOM – Heute"><span class="logo-mark" aria-hidden="true"></span></a>
         ${navLinks("")}
         <div class="spacer"></div>
         <a href="#/einstellungen" data-nav="einstellungen">${icon("settings")}<span>Einstellungen</span></a>
@@ -108,7 +108,7 @@ function loginView() {
   const draw = () => {
     appEl.innerHTML = `
       <div class="login"><div class="box">
-        <img class="logo login-logo" src="icons/logo-glass.png" alt="DOM">
+        <span class="logo-mark login-logo" role="img" aria-label="DOM"></span>
         <h1 class="t-title1">${mode === "login" ? "Willkommen zurück" : "Konto erstellen"}</h1>
         <p class="lead">Büromöblierung & Umzugskoordination – Projekte, Budget, Angebote und Termine an einem Ort.</p>
         ${segmented("mode", [["login", "Anmelden"], ["signup", "Registrieren"]], mode, true)}
