@@ -1,0 +1,212 @@
+/*
+ * Apple-HIG Design-Tokens für das Web.
+ * Werte = iOS/iPadOS-Systemfarben und Dynamic-Type-Stufe „Large“ (Standard).
+ * Komponenten verwenden ausschließlich die semantischen Variablen (--label, --bg-grouped …),
+ * nie die Rohfarben. Folgt automatisch Hell/Dunkel, Kontrast erhöhen, Bewegung/Transparenz reduzieren.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* ---------- Systemfarben (Light) ---------- */
+  --system-blue: #007aff;
+  --system-green: #34c759;
+  --system-red: #ff3b30;
+  --system-orange: #ff9500;
+  --system-yellow: #ffcc00;
+  --system-mint: #00c7be;
+  --system-teal: #30b0c7;
+  --system-cyan: #32ade6;
+  --system-indigo: #5856d6;
+  --system-purple: #af52de;
+  --system-pink: #ff2d55;
+  --system-brown: #a2845e;
+  --system-gray: #8e8e93;
+  --system-gray2: #aeaeb2;
+  --system-gray3: #c7c7cc;
+  --system-gray4: #d1d1d6;
+  --system-gray5: #e5e5ea;
+  --system-gray6: #f2f2f7;
+
+  /* ---------- Semantik: Text ---------- */
+  --label: #000000;
+  --label-secondary: rgba(60, 60, 67, 0.6);
+  --label-tertiary: rgba(60, 60, 67, 0.3);
+  --label-quaternary: rgba(60, 60, 67, 0.18);
+  --placeholder: rgba(60, 60, 67, 0.3);
+  --link: var(--system-blue);
+
+  /* ---------- Semantik: Hintergründe ---------- */
+  --bg: #ffffff;
+  --bg-secondary: #f2f2f7;
+  --bg-tertiary: #ffffff;
+  --bg-grouped: #f2f2f7;
+  --bg-grouped-secondary: #ffffff;
+  --bg-grouped-tertiary: #f2f2f7;
+  --bg-elevated: #ffffff;
+
+  /* ---------- Semantik: Füllungen & Trenner ---------- */
+  --fill: rgba(120, 120, 128, 0.2);
+  --fill-secondary: rgba(120, 120, 128, 0.16);
+  --fill-tertiary: rgba(118, 118, 128, 0.12);
+  --fill-quaternary: rgba(116, 116, 128, 0.08);
+  --separator: rgba(60, 60, 67, 0.29);
+  --separator-opaque: #c6c6c8;
+
+  /* ---------- Akzent & Status (Bedeutung immer zusätzlich als Text/Symbol) ---------- */
+  --accent: var(--system-blue);
+  --on-accent: #ffffff;
+  --positive: var(--system-green);
+  --warning: var(--system-orange);
+  --critical: var(--system-red);
+
+  /* ---------- Materialien (Liquid Glass – nur Funktionsebene) ---------- */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --glass-filter: blur(24px) saturate(180%);
+  --material-thick: rgba(249, 249, 249, 0.94);
+  --dimming: rgba(0, 0, 0, 0.35);
+
+  /* ---------- Typografie (Dynamic Type „Large“, 1rem = 17pt Body) ---------- */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", var(--font);
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --t-large-title: 700 2.125rem/2.5625rem var(--font-display);  /* 34/41 emphasized */
+  --t-title1: 400 1.75rem/2.125rem var(--font-display);          /* 28/34 */
+  --t-title2: 700 1.375rem/1.75rem var(--font-display);          /* 22/28 emphasized */
+  --t-title3: 600 1.25rem/1.5625rem var(--font-display);         /* 20/25 emphasized */
+  --t-headline: 600 1.0625rem/1.375rem var(--font);              /* 17/22 */
+  --t-body: 400 1.0625rem/1.375rem var(--font);                  /* 17/22 */
+  --t-callout: 400 1rem/1.3125rem var(--font);                   /* 16/21 */
+  --t-subhead: 400 0.9375rem/1.25rem var(--font);                /* 15/20 */
+  --t-footnote: 400 0.8125rem/1.125rem var(--font);              /* 13/18 */
+  --t-caption1: 400 0.75rem/1rem var(--font);                    /* 12/16 */
+  --t-caption2: 400 0.6875rem/0.8125rem var(--font);             /* 11/13 */
+
+  --tracking-large-title: 0.023em;
+  --tracking-body: -0.024em;
+  --tracking-footnote: -0.006em;
+
+  /* ---------- Abstände (8-pt-Raster, 4er Zwischenstufen) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --margin: 16px;          /* compact-Seitenrand */
+  --margin-regular: 20px;  /* regular-Seitenrand */
+  --readable-width: 672px; /* lesbare Inhaltsbreite */
+
+  /* ---------- Formen ---------- */
+  --radius-cell: 10px;     /* Inset-Grouped-Liste */
+  --radius-card: 16px;
+  --radius-sheet: 14px;
+  --radius-control: 10px;
+  --radius-capsule: 999px;
+
+  --hit: 44px;             /* Mindest-Trefferfläche */
+  --row-min: 44px;
+  --tabbar-h: 64px;
+  --sidebar-w: 280px;
+
+  /* ---------- Bewegung ---------- */
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.34, 1.2, 0.64, 1);
+  --dur-fast: 150ms;
+  --dur: 250ms;
+  --dur-slow: 400ms;
+}
+
+/* ---------- Dark Mode (Base) ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --system-blue: #0a84ff;
+    --system-green: #30d158;
+    --system-red: #ff453a;
+    --system-orange: #ff9f0a;
+    --system-yellow: #ffd60a;
+    --system-mint: #63e6e2;
+    --system-teal: #40cbe0;
+    --system-cyan: #64d2ff;
+    --system-indigo: #5e5ce6;
+    --system-purple: #bf5af2;
+    --system-pink: #ff375f;
+    --system-brown: #ac8e68;
+    --system-gray2: #636366;
+    --system-gray3: #48484a;
+    --system-gray4: #3a3a3c;
+    --system-gray5: #2c2c2e;
+    --system-gray6: #1c1c1e;
+
+    --label: #ffffff;
+    --label-secondary: rgba(235, 235, 245, 0.6);
+    --label-tertiary: rgba(235, 235, 245, 0.3);
+    --label-quaternary: rgba(235, 235, 245, 0.16);
+    --placeholder: rgba(235, 235, 245, 0.3);
+
+    --bg: #000000;
+    --bg-secondary: #1c1c1e;
+    --bg-tertiary: #2c2c2e;
+    --bg-grouped: #000000;
+    --bg-grouped-secondary: #1c1c1e;
+    --bg-grouped-tertiary: #2c2c2e;
+    --bg-elevated: #1c1c1e;   /* Elevated: Sheets/Popover */
+
+    --fill: rgba(120, 120, 128, 0.36);
+    --fill-secondary: rgba(120, 120, 128, 0.32);
+    --fill-tertiary: rgba(118, 118, 128, 0.24);
+    --fill-quaternary: rgba(118, 118, 128, 0.18);
+    --separator: rgba(84, 84, 88, 0.6);
+    --separator-opaque: #38383a;
+
+    --glass-bg: rgba(30, 30, 32, 0.66);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    --material-thick: rgba(37, 37, 37, 0.94);
+    --dimming: rgba(0, 0, 0, 0.5);
+  }
+}
+:root[data-theme="dark"] {
+  --system-blue: #0a84ff; --system-green: #30d158; --system-red: #ff453a; --system-orange: #ff9f0a;
+  --system-yellow: #ffd60a; --system-indigo: #5e5ce6; --system-purple: #bf5af2; --system-teal: #40cbe0;
+  --system-gray2: #636366; --system-gray3: #48484a; --system-gray4: #3a3a3c; --system-gray5: #2c2c2e; --system-gray6: #1c1c1e;
+  --label: #ffffff; --label-secondary: rgba(235, 235, 245, 0.6); --label-tertiary: rgba(235, 235, 245, 0.3);
+  --label-quaternary: rgba(235, 235, 245, 0.16); --placeholder: rgba(235, 235, 245, 0.3);
+  --bg: #000000; --bg-secondary: #1c1c1e; --bg-tertiary: #2c2c2e; --bg-grouped: #000000;
+  --bg-grouped-secondary: #1c1c1e; --bg-grouped-tertiary: #2c2c2e; --bg-elevated: #1c1c1e;
+  --fill: rgba(120, 120, 128, 0.36); --fill-secondary: rgba(120, 120, 128, 0.32);
+  --fill-tertiary: rgba(118, 118, 128, 0.24); --fill-quaternary: rgba(118, 118, 128, 0.18);
+  --separator: rgba(84, 84, 88, 0.6); --separator-opaque: #38383a;
+  --glass-bg: rgba(30, 30, 32, 0.66); --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); --material-thick: rgba(37, 37, 37, 0.94); --dimming: rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- Kontrast erhöhen ---------- */
+@media (prefers-contrast: more) {
+  :root {
+    --system-blue: #0040dd; --system-green: #248a3d; --system-red: #d70015; --system-orange: #c93400;
+    --label-secondary: rgba(60, 60, 67, 0.85); --separator: rgba(60, 60, 67, 0.6);
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --system-blue: #409cff; --system-green: #30db5b; --system-red: #ff6961; --system-orange: #ffb340;
+    --label-secondary: rgba(235, 235, 245, 0.85); --separator: rgba(84, 84, 88, 0.9);
+  }
+}
+
+/* ---------- Transparenz reduzieren: Glas wird opak ---------- */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-filter: none; --glass-bg: var(--bg-grouped-secondary); }
+}
+
+/* ---------- Bewegung reduzieren: Überblenden statt Bewegen ---------- */
+@media (prefers-reduced-motion: reduce) {
+  :root { --ease-spring: var(--ease); --dur: 1ms; --dur-slow: 1ms; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
